@@ -1,0 +1,66 @@
+# Radiance Coaching Center — Flutter App
+
+## Rule: Keep this file current
+After **meaningful** code or architecture changes (new features, deps, routes, conventions), **update this section** so AI and humans always see the latest project context. Bump the **Last updated** line below.
+
+**Last updated:** 2026-04-09 (Supabase migrations, FCM, admin dashboard, student flows, exams E2E, public/CMS, tests)
+
+---
+
+## Project Context
+Flutter Android app for **Radiance Coaching Center** (Tongi, Gazipur, Bangladesh). Manages SSC/HSC coaching operations: admin + student roles, payments, attendance, exams, content, etc. See `plan/` for full product and DB docs.
+
+## Implementation status (snapshot)
+| Area | Status |
+|------|--------|
+| **App shell** | `main.dart`: `ProviderScope` + `MaterialApp.router`; `initSupabase()` + `FcmService.init()` before `runApp` |
+| **Theme** | `lib/app/theme.dart` — Material 3, Hind Siliguri + Nunito, primary/accent tokens |
+| **Supabase** | `lib/core/supabase_client.dart` — `SUPABASE_URL` / `SUPABASE_ANON_KEY` via `--dart-define` |
+| **Supabase repo** | `supabase/migrations/` — schema + RLS; `supabase/functions/*` — Edge stubs (`send-notification`, `generate-monthly-dues`, `send-sms`) |
+| **Firebase** | `lib/firebase_options.dart` (replace via FlutterFire), `android/app/google-services.json` placeholder; `lib/core/services/fcm_service.dart`; `NotificationEdgeService` + `ResultCalculator` invokes `send-notification` |
+| **Routing** | `lib/app/router.dart` — GoRouter; `/admin/exams/new` before `/admin/exams/:examId` before `/admin/exams`; `/admin/cms`; student screens split under `lib/features/student/**` |
+| **Auth** | `AuthRepository` + `signInProvider`; post-login `FcmService.syncTokenAfterAuth()` |
+| **Admin dashboard** | `admin_dashboard_screen.dart` — cards, `fl_chart` bar/line/pie, drawer, `adminDashboardProvider` |
+| **Admin students** | `admin_students_list_screen.dart`, `admin_student_profile_screen.dart` (tabs, enroll sheet) |
+| **Admin payments** | `admin_payments_hub_screen.dart` — payments + enriched dues tabs |
+| **Admin attendance hub** | `attendance_hub_screen.dart` → `/admin/attendance/:courseId/:date` |
+| **Admin exams** | `admin_exams_list_screen.dart`, `admin_exam_editor_screen.dart`, `admin_exam_detail_screen.dart` (questions, publish → `ResultCalculator`) |
+| **Student app** | `student_dashboard_screen.dart`, `student_courses_screen.dart`, `student_course_detail_screen.dart`, `chapter_notes_screen.dart`, `student_payments_screen.dart`, `student_attendance_screen.dart`, `student_results_screen.dart`, `student_exams_list_screen.dart`, `student_exam_take_screen.dart`, `community_groups_screen.dart`; `QBankScreen` placeholder |
+| **Public / CMS** | `public_home_screen.dart` + `HomeContentRepository`; `admin_home_cms_screen.dart` at `/admin/cms` |
+| **Models** | `shared/models/`: added `exam_model.dart`, `question_model.dart`; existing user/course/payment/etc. |
+| **Tests** | `test/widget_test.dart` smoke; `test/date_sql_test.dart` for `dateToSqlDate` |
+
+## Tech stack
+
+### In use (pubspec)
+- Flutter (Dart SDK ^3.11)
+- **flutter_riverpod** + **riverpod_annotation**; codegen: **build_runner** + **riverpod_generator**
+- **go_router**, **supabase_flutter**, **google_fonts**, **uuid**, **pdf** / **printing**, **share_plus**
+- **cached_network_image**, **shimmer**, **image_picker**, **file_picker**, **url_launcher**
+- **firebase_core**, **firebase_messaging**, **flutter_local_notifications**
+- **dio**, **fl_chart**, **intl**, **path_provider**, **flutter_pdfview**, **flutter_math_fork**, **connectivity_plus**, **shared_preferences**, **youtube_player_flutter**
+
+### Edge / workers
+- FCM delivery: app saves `fcm_token`; Edge Function stub + queued `notifications` rows (`fcm_sent`)
+
+## Architecture pattern
+Feature-first under `lib/features/{feature}/` with repositories for Supabase, Riverpod providers where used.
+
+## Coding standards
+- **ConsumerWidget** / **ConsumerStatefulWidget** when using Riverpod for those screens.
+- **@riverpod** + generated code where applicable; run `dart run build_runner build --delete-conflicting-outputs` after provider edits.
+- **All Supabase calls** in **repository** classes.
+- Bengali UI copy via **GoogleFonts.hindSiliguri()** where specified.
+
+## Supabase & roles
+- Phone OTP; `public.users.id` = `auth.users.id`; route guards use JWT metadata `role` (`kRoleAdmin` / `kRoleStudent`).
+
+## Database tables
+See `plan/03_database_roadmap.md` and `supabase/migrations/`.
+
+## Colors (`lib/app/theme.dart`)
+- primary `0xFF1A3C6E`, accent `0xFFF5A623`, surfaces as in theme.
+
+## Language
+- **UI copy:** Bengali where specified.
+- **Code & comments:** English.
