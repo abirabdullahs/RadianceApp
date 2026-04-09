@@ -1,27 +1,29 @@
 -- Row Level Security for Radiance (see plan/03_database_roadmap.md)
 
--- Helper: admin check without recursive policy issues
+-- Role checks use JWT only (see 20260409170000_is_admin_jwt_and_sync_auth.sql).
+-- Never SELECT public.users here — avoids RLS infinite recursion on users.
+-- Invoker-only (no SECURITY DEFINER) so auth.jwt() matches the session; used on non-users tables.
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
 LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
 STABLE
 AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin'
+  SELECT COALESCE(
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin',
+    (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin',
+    false
   );
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_student()
 RETURNS boolean
 LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
 STABLE
 AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'student'
+  SELECT COALESCE(
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'student',
+    (auth.jwt() -> 'user_metadata' ->> 'role') = 'student',
+    false
   );
 $$;
 
@@ -69,20 +71,45 @@ $$;
 -- USERS
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users_select_own_or_admin" ON public.users FOR SELECT
-  USING (auth.uid() = id OR public.is_admin());
+-- public.users policies must NOT call is_admin() — any function call can re-trigger 42P17 on this table.
+-- Use inline JWT checks only. Keep role in sync: 20260409170000_is_admin_jwt_and_sync_auth.sql
+CREATE POLICY "users_select_own" ON public.users FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "users_select_as_admin" ON public.users FOR SELECT
+  USING (
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  );
 
 CREATE POLICY "users_insert_own" ON public.users FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "users_insert_admin" ON public.users FOR INSERT
-  WITH CHECK (public.is_admin());
+  WITH CHECK (
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  );
 
-CREATE POLICY "users_update_own_or_admin" ON public.users FOR UPDATE
-  USING (auth.uid() = id OR public.is_admin());
+CREATE POLICY "users_update_own" ON public.users FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "users_update_as_admin" ON public.users FOR UPDATE
+  USING (
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  )
+  WITH CHECK (
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  );
 
 CREATE POLICY "users_delete_admin" ON public.users FOR DELETE
-  USING (public.is_admin());
+  USING (
+    (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+    OR (auth.jwt() -> 'user_metadata' ->> 'role') = 'admin'
+  );
 
 -- COURSES (public read active for marketing)
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;

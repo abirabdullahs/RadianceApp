@@ -24,12 +24,13 @@ class DefaultFirebaseOptions {
     }
   }
 
+  /// Values must match [android/app/google-services.json] (same Firebase Android app).
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDummy0000000000000000000000000',
-    appId: '1:000000000000:android:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'radiance-placeholder',
-    storageBucket: 'radiance-placeholder.appspot.com',
+    apiKey: 'AIzaSyC5e9DFCeRHU1cOLg87caagVCa6uuw943o',
+    appId: '1:595891837980:android:5d3b448718136943a9d3d9',
+    messagingSenderId: '595891837980',
+    projectId: 'radiancebdapp',
+    storageBucket: 'radiancebdapp.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(

@@ -7,6 +7,26 @@ const String kStudentIdPrefix = 'RCC';
 /// [User.appMetadata] / [User.userMetadata] role values (Supabase Auth).
 const String kRoleAdmin = 'admin';
 const String kRoleStudent = 'student';
+const String kRoleTeacher = 'teacher';
+
+/// Supabase Auth email for students: `{11-digit BD phone}@student.radiance.local`.
+/// Must match Edge Function `create-student` and [studentAuthEmailFromPhone].
+const String kStudentAuthEmailDomain = 'student.radiance.local';
+
+/// Login identifier for students (same string stored in Auth email field).
+String studentAuthEmailFromPhone(String phoneDigits11) {
+  final d = phoneDigits11.replaceAll(RegExp(r'\D'), '');
+  return '$d@$kStudentAuthEmailDomain';
+}
+
+/// Default student password rule: last 9 digits of the 11-digit mobile number.
+String studentPasswordFromPhoneDigits(String phoneDigits11) {
+  final d = phoneDigits11.replaceAll(RegExp(r'\D'), '');
+  if (d.length < 9) {
+    throw FormatException('Invalid phone for password');
+  }
+  return d.substring(d.length - 9);
+}
 
 // --- Supabase public table names (Postgres) ---
 
@@ -45,3 +65,6 @@ const String kTableComplaints = 'complaints';
 const String kTableHomeContent = 'home_content';
 const String kTableSuggestions = 'suggestions';
 const String kTableSuggestionLikes = 'suggestion_likes';
+const String kTableDoubtThreads = 'doubt_threads';
+const String kTableDoubtMessages = 'doubt_messages';
+const String kTableFeeServices = 'fee_services';

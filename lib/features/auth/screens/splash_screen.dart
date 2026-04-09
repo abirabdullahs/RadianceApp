@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/auth_metadata.dart';
+import '../../../core/auth/profile_role_notifier.dart';
 import '../../../core/constants.dart';
-import '../../../core/supabase_client.dart';
 
 /// Entry route: resolves session + role and navigates (see [appRouter] redirect for guards).
 class SplashScreen extends StatefulWidget {
@@ -24,11 +23,15 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
 
-    final user = supabaseClient.auth.currentSession?.user;
-    final role = roleFromSupabaseMetadata(user);
+    await profileRoleNotifier.refresh();
+    if (!mounted) return;
+
+    final role = effectiveRoleFromSession();
 
     if (role == kRoleAdmin) {
       context.go('/admin');
+    } else if (role == kRoleTeacher) {
+      context.go('/teacher');
     } else if (role == kRoleStudent) {
       context.go('/student');
     } else {

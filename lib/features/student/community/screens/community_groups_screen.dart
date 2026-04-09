@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../app/widgets/notification_app_bar_action.dart';
+import '../../widgets/student_drawer.dart';
 import '../repositories/community_repository.dart';
 
 class CommunityScreen extends StatefulWidget {
@@ -23,8 +25,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
+        actions: const [NotificationAppBarAction()],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
@@ -35,7 +42,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
           final groups = snap.data!;
           if (groups.isEmpty) {
             return Center(
-              child: Text('কোনো গ্রুপ নেই', style: GoogleFonts.hindSiliguri()),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'সক্রিয় কোর্সে নথিভুক্ত নন বা কোর্স চ্যাট এখনো তৈরি হয়নি।\nকোর্সে ভর্তি হলে গ্রুপে স্বয়ংক্রিয় সদস্য হবেন।',
+                  style: GoogleFonts.hindSiliguri(),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             );
           }
           return ListView.builder(

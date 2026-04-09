@@ -1,169 +1,214 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../app/theme.dart';
-import '../../../shared/models/course_model.dart';
-import '../../admin/courses/repositories/course_repository.dart';
-import '../repositories/home_content_repository.dart';
+import '../../../app/widgets/theme_picker_sheet.dart';
 
-/// Marketing home (no auth): banners + active courses + login CTA.
-class PublicHomeScreen extends StatefulWidget {
+/// Public entry: onboarding slides (no admin CMS). Continue → login.
+class PublicHomeScreen extends ConsumerStatefulWidget {
   const PublicHomeScreen({super.key});
 
   @override
-  State<PublicHomeScreen> createState() => _PublicHomeScreenState();
+  ConsumerState<PublicHomeScreen> createState() => _PublicHomeScreenState();
 }
 
-class _PublicHomeScreenState extends State<PublicHomeScreen> {
-  late Future<_PublicBundle> _future;
+class _Slide {
+  const _Slide({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+}
+
+const _slides = <_Slide>[
+  _Slide(
+    icon: Icons.auto_awesome_rounded,
+    title: 'Radiance-এ স্বাগতম',
+    body:
+        'আপনার কোচিং সেন্টারের কোর্স, পেমেন্ট ও শেখার সবকিছু এক জায়গায়।',
+  ),
+  _Slide(
+    icon: Icons.school_outlined,
+    title: 'কোর্স ও শিক্ষা',
+    body:
+        'কোর্স ম্যাটেরিয়াল, নোট ও পরীক্ষায় অংশ নিন—নিয়মিত আপডেট পাবেন।',
+  ),
+  _Slide(
+    icon: Icons.payment_outlined,
+    title: 'পেমেন্ট ও হিসাব',
+    body:
+        'ভাউচার ও মাসিক বিল স্বচ্ছভাবে দেখুন; সাপোর্ট দরকার হলে যোগাযোগ করুন।',
+  ),
+  _Slide(
+    icon: Icons.forum_outlined,
+    title: 'যোগাযোগ ও সাপোর্ট',
+    body:
+        'প্রশ্ন বা সমস্যা থাকলে সেন্টারের সাথে সরাসরি যোগাযোগ করতে পারবেন।',
+  ),
+];
+
+class _PublicHomeScreenState extends ConsumerState<PublicHomeScreen> {
+  final _pageController = PageController();
+  int _index = 0;
 
   @override
-  void initState() {
-    super.initState();
-    _future = _load();
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
-  Future<_PublicBundle> _load() async {
-    final content = await HomeContentRepository().listActivePublic();
-    final courses = await CourseRepository().getCourses();
-    final active = courses.where((c) => c.isActive).toList();
-    return _PublicBundle(content: content, courses: active);
+  void _goLogin() {
+    context.push('/login');
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final last = _index >= _slides.length - 1;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Radiance', style: GoogleFonts.hindSiliguri()),
+        actions: [
+          IconButton(
+            tooltip: 'থিম',
+            onPressed: () => showThemePickerSheet(context, ref),
+            icon: const Icon(Icons.palette_outlined),
+          ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => context.push('/login'),
-                  child: Text('লগইন', style: GoogleFonts.hindSiliguri()),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => context.push('/login'),
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
-                  child: Text(
-                    'অ্যাকাউন্ট',
-                    style: GoogleFonts.hindSiliguri(color: Colors.white),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  _slides.length,
+                  (i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: i == _index ? 22 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: i == _index
+                            ? scheme.primary
+                            : scheme.outlineVariant.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
                   ),
                 ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _goLogin,
+                      child: Text('লগইন', style: GoogleFonts.hindSiliguri()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: last ? _goLogin : () {
+                        _pageController.nextPage(
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary,
+                      ),
+                      child: Text(
+                        last ? 'শুরু করুন' : 'পরবর্তী',
+                        style: GoogleFonts.hindSiliguri(),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
-      body: FutureBuilder<_PublicBundle>(
-        future: _future,
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final b = snap.data!;
-          return RefreshIndicator(
-            onRefresh: () async {
-              setState(() {
-                _future = _load();
-              });
-              await _future;
-            },
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(
-                  'নোটিশ ও ব্যানার',
-                  style: GoogleFonts.hindSiliguri(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (b.content.isEmpty)
-                  Text('শীঘ্রই আপডেট', style: GoogleFonts.hindSiliguri())
-                else
-                  ...b.content.map(
-                    (row) {
-                      final type = row['type'] as String? ?? '';
-                      final title = row['title'] as String? ?? '';
-                      final img = row['image_url'] as String?;
-                      if (type == 'banner' && img != null && img.isNotEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              imageUrl: img,
-                              height: 140,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        );
-                      }
-                      return ListTile(
-                        title: Text(title, style: GoogleFonts.hindSiliguri()),
-                        subtitle: Text(type, style: GoogleFonts.nunito(fontSize: 12)),
-                      );
-                    },
-                  ),
-                const SizedBox(height: 24),
-                Text(
-                  'কোর্সসমূহ',
-                  style: GoogleFonts.hindSiliguri(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (b.courses.isEmpty)
-                  Text('কোনো কোর্স নেই', style: GoogleFonts.hindSiliguri())
-                else
-                  ...b.courses.map(
-                    (c) => Card(
-                      child: ListTile(
-                        leading: c.thumbnailUrl != null && c.thumbnailUrl!.isNotEmpty
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: CachedNetworkImage(
-                                  imageUrl: c.thumbnailUrl!,
-                                  width: 56,
-                                  height: 56,
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                            : const Icon(Icons.school, color: AppTheme.primary),
-                        title: Text(c.name, style: GoogleFonts.hindSiliguri()),
-                        subtitle: Text(
-                          '৳${c.monthlyFee.toStringAsFixed(0)}/মাস',
-                          style: GoogleFonts.nunito(),
-                        ),
-                        onTap: () => context.push('/login'),
+      body: LayoutBuilder(
+        builder: (context, c) {
+          return PageView.builder(
+            controller: _pageController,
+            itemCount: _slides.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (context, i) {
+              final s = _slides[i];
+              final pad = c.maxWidth < 400 ? 20.0 : 32.0;
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: pad, vertical: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: (c.maxWidth * 0.28).clamp(88.0, 120.0),
+                      height: (c.maxWidth * 0.28).clamp(88.0, 120.0),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: scheme.primaryContainer.withValues(alpha: 0.85),
+                      ),
+                      child: Icon(
+                        s.icon,
+                        size: 48,
+                        color: scheme.primary,
                       ),
                     ),
-                  ),
-              ],
-            ),
+                    SizedBox(height: c.maxHeight * 0.05),
+                    Text(
+                      s.title,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.hindSiliguri(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      s.body,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.hindSiliguri(
+                        fontSize: 15,
+                        height: 1.45,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    if (last) ...[
+                      const SizedBox(height: 28),
+                      TextButton.icon(
+                        onPressed: _goLogin,
+                        icon: const Icon(Icons.login_rounded),
+                        label: Text(
+                          'লগইন / রেজিস্টার',
+                          style: GoogleFonts.hindSiliguri(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           );
         },
       ),
     );
   }
-}
-
-class _PublicBundle {
-  const _PublicBundle({required this.content, required this.courses});
-
-  final List<Map<String, dynamic>> content;
-  final List<CourseModel> courses;
 }

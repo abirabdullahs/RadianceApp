@@ -6,6 +6,7 @@ import '../../../core/supabase_client.dart';
 import '../../../shared/models/payment_due_model.dart';
 import '../../../shared/models/payment_model.dart';
 import '../../admin/payments/repositories/payment_repository.dart';
+import '../widgets/student_drawer.dart';
 
 class StudentPaymentsScreen extends StatefulWidget {
   const StudentPaymentsScreen({super.key});
@@ -35,7 +36,11 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
   Widget build(BuildContext context) {
     final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
       ),
       body: FutureBuilder<_PayBundle>(

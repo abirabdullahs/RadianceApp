@@ -6,6 +6,7 @@ import '../../../shared/models/chapter_model.dart';
 import '../../../shared/models/course_model.dart';
 import '../../../shared/models/subject_model.dart';
 import '../../admin/courses/repositories/course_repository.dart';
+import '../widgets/student_drawer.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   const CourseDetailScreen({super.key, required this.courseId});
@@ -47,13 +48,22 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
       builder: (context, snap) {
         if (!snap.hasData) {
           return Scaffold(
-            appBar: AppBar(),
+            drawer: const StudentDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+            ),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
         final b = snap.data!;
         return Scaffold(
+          drawer: const StudentDrawer(),
           appBar: AppBar(
+            leading: const AppBarDrawerLeading(),
+            automaticallyImplyLeading: false,
+            leadingWidth: leadingWidthForDrawer(context),
             title: Text(b.course.name, style: GoogleFonts.hindSiliguri()),
           ),
           body: ListView(

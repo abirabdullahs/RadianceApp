@@ -61,9 +61,9 @@ final currentUserProvider = AutoDisposeFutureProvider<UserModel?>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef CurrentUserRef = AutoDisposeFutureProviderRef<UserModel?>;
-String _$signInHash() => r'440b36f204cc9ba9970d814621b964f5c3ec4812';
+String _$signInHash() => r'4222bd2e286976967ebd7a5ec5713a882987d6b7';
 
-/// Phone OTP actions: loading and errors exposed as [AsyncValue].
+/// Sign-in / sign-out; loading and errors exposed as [AsyncValue].
 ///
 /// Copied from [SignIn].
 @ProviderFor(SignIn)

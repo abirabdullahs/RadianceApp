@@ -4,11 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../app/theme.dart';
-import '../../../core/supabase_client.dart';
+import '../../../app/widgets/notification_app_bar_action.dart';
 import '../../../shared/models/course_model.dart';
 import '../../../shared/models/enrollment_model.dart';
 import '../../admin/courses/repositories/course_repository.dart';
 import '../../admin/students/repositories/student_repository.dart';
+import '../widgets/student_drawer.dart';
 
 class StudentCoursesScreen extends StatefulWidget {
   const StudentCoursesScreen({super.key});
@@ -27,7 +28,6 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
   }
 
   Future<List<_CourseTile>> _load() async {
-    final uid = supabaseClient.auth.currentUser!.id;
     final en = await StudentRepository().getMyEnrollments();
     final cRepo = CourseRepository();
     final out = <_CourseTile>[];
@@ -43,8 +43,13 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
+        actions: const [NotificationAppBarAction()],
       ),
       body: FutureBuilder<List<_CourseTile>>(
         future: _future,
@@ -76,7 +81,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                             fit: BoxFit.cover,
                           ),
                         )
-                      : const Icon(Icons.school, size: 40, color: AppTheme.primary),
+                      : Icon(Icons.school, size: 40, color: context.themePrimary),
                   title: Text(c.name, style: GoogleFonts.hindSiliguri()),
                   subtitle: Text(
                     '৳${c.monthlyFee.toStringAsFixed(0)}/মাস',

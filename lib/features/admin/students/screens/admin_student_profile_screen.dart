@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../../../shared/models/enrollment_model.dart';
 import '../../../../shared/models/payment_model.dart';
 import '../../../../shared/models/result_model.dart';
@@ -74,15 +75,19 @@ class StudentProfileScreen extends ConsumerWidget {
         return DefaultTabController(
           length: 4,
           child: Scaffold(
+            drawer: const AdminDrawer(),
             appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
               title: Text(u.fullNameBn, style: GoogleFonts.hindSiliguri()),
               bottom: TabBar(
                 isScrollable: true,
                 tabs: [
-                  Tab(text: 'তথ্য', style: GoogleFonts.hindSiliguri()),
-                  Tab(text: 'কোর্স', style: GoogleFonts.hindSiliguri()),
-                  Tab(text: 'পেমেন্ট', style: GoogleFonts.hindSiliguri()),
-                  Tab(text: 'ফলাফল', style: GoogleFonts.hindSiliguri()),
+                  Tab(child: Text('তথ্য', style: GoogleFonts.hindSiliguri())),
+                  Tab(child: Text('কোর্স', style: GoogleFonts.hindSiliguri())),
+                  Tab(child: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri())),
+                  Tab(child: Text('ফলাফল', style: GoogleFonts.hindSiliguri())),
                 ],
               ),
             ),
@@ -104,11 +109,24 @@ class StudentProfileScreen extends ConsumerWidget {
           ),
         );
       },
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      loading: () => Scaffold(
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(),
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
+        ),
         body: Center(child: Text('$e')),
       ),
     );
@@ -145,6 +163,10 @@ class _InfoTab extends StatelessWidget {
           subtitle: Text(dob, style: GoogleFonts.nunito()),
         ),
         ListTile(
+          title: Text('কলেজ / স্কুল', style: GoogleFonts.hindSiliguri()),
+          subtitle: Text(u.college ?? '—', style: GoogleFonts.hindSiliguri()),
+        ),
+        ListTile(
           title: Text('ঠিকানা', style: GoogleFonts.hindSiliguri()),
           subtitle: Text(u.address ?? '—', style: GoogleFonts.hindSiliguri()),
         ),
@@ -174,7 +196,7 @@ class _CoursesTab extends ConsumerWidget {
             onPressed: () => _showEnrollSheet(context, ref, studentId),
             icon: const Icon(Icons.add),
             label: Text('কোর্সে ভর্তি', style: GoogleFonts.hindSiliguri()),
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+            style: FilledButton.styleFrom(backgroundColor: context.themePrimary),
           ),
         ),
         Expanded(

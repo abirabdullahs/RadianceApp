@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' show min;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,15 +8,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/constants.dart';
+import '../../../../core/storage_upload_hint.dart';
 import '../../../../core/supabase_client.dart';
+import '../../../../app/widgets/app_bar_drawer_leading.dart';
+import '../../../../features/admin/widgets/admin_drawer.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../shared/models/user_model.dart';
+import '../../widgets/student_drawer.dart';
 
 /// Community group chat with Supabase Realtime (`community_messages` stream).
 class CommunityChatScreen extends ConsumerStatefulWidget {
@@ -23,10 +29,14 @@ class CommunityChatScreen extends ConsumerStatefulWidget {
     super.key,
     required this.groupId,
     required this.groupName,
+    this.useAdminShell = false,
   });
 
   final String groupId;
   final String groupName;
+
+  /// When true (e.g. `/admin/course-chats/...`), use [AdminDrawer] instead of [StudentDrawer].
+  final bool useAdminShell;
 
   @override
   ConsumerState<CommunityChatScreen> createState() =>
@@ -34,6 +44,9 @@ class CommunityChatScreen extends ConsumerStatefulWidget {
 }
 
 class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
+  Widget _shellDrawer() =>
+      widget.useAdminShell ? const AdminDrawer() : const StudentDrawer();
+
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
   final _uuid = const Uuid();
@@ -65,6 +78,32 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
     super.dispose();
   }
 
+  /// Loads messages via REST (reliable). Stream alone can stay empty if Realtime is off.
+  Future<void> _fetchMessages() async {
+    try {
+      final rows = await supabaseClient
+          .from(kTableCommunityMessages)
+          .select()
+          .eq('group_id', widget.groupId)
+          .order('created_at', ascending: false);
+      if (!mounted) return;
+      final list = (rows as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((m) => m['is_deleted'] != true)
+          .toList();
+      if (!mounted) return;
+      setState(() => _messages = list);
+      _ensureSendersLoaded(list);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      });
+    } catch (_) {
+      // RLS/network — keep existing list if any
+    }
+  }
+
   Future<void> _loadGroupMeta() async {
     try {
       final group = await supabaseClient
@@ -93,6 +132,8 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
 
   void _subscribeMessages() {
     _msgSub?.cancel();
+    // Immediate load so UI shows history even without Realtime publication.
+    unawaited(_fetchMessages());
     _msgSub = supabaseClient
         .from(kTableCommunityMessages)
         .stream(primaryKey: const ['id'])
@@ -111,6 +152,11 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
             DateTime.fromMillisecondsSinceEpoch(0);
         return tb.compareTo(ta);
       });
+      // Stream can emit [] when replication isn't ready — don't wipe a good list.
+      if (filtered.isEmpty && _messages.isNotEmpty) {
+        unawaited(_fetchMessages());
+        return;
+      }
       setState(() => _messages = filtered);
       _ensureSendersLoaded(filtered);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,6 +228,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       if (!mounted) return;
       _textController.clear();
       setState(() => _replyingTo = null);
+      await _fetchMessages();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -206,6 +253,10 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       await supabaseStorage.from(kStorageBucketCommunity).uploadBinary(
             path,
             bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: mimeForStorageExtension(extension),
+            ),
           );
       final publicUrl =
           supabaseStorage.from(kStorageBucketCommunity).getPublicUrl(path);
@@ -220,10 +271,11 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       });
       if (!mounted) return;
       setState(() => _replyingTo = null);
+      await _fetchMessages();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('আপলোড ব্যর্থ: $e')),
+          SnackBar(content: Text('আপলোড ব্যর্থ: ${storageUploadHint(e)}')),
         );
       }
     } finally {
@@ -454,6 +506,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                         .from(kTableCommunityMessages)
                         .update(<String, dynamic>{'is_deleted': true})
                         .eq('id', msg['id'] as String);
+                    if (mounted) await _fetchMessages();
                   } catch (e) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -487,14 +540,24 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       data: (user) {
         if (user == null) {
           return Scaffold(
-            appBar: AppBar(title: Text('চ্যাট', style: GoogleFonts.hindSiliguri())),
+            drawer: _shellDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+              title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
+            ),
             body: const Center(child: Text('লগইন প্রয়োজন')),
           );
         }
         final uid = user.id;
 
         return Scaffold(
+          drawer: _shellDrawer(),
           appBar: AppBar(
+            leading: const AppBarDrawerLeading(),
+            automaticallyImplyLeading: false,
+            leadingWidth: leadingWidthForDrawer(context),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -525,160 +588,184 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              if (_pinnedMessage != null)
-                Material(
-                  color: const Color(0xFFFFF9C4),
-                  child: InkWell(
-                    onTap: () => _showPinnedFull(_pinnedMessage!),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.push_pin, size: 18, color: Color(0xFFF57F17)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _previewSnippet(_pinnedMessage!),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.hindSiliguri(fontSize: 14),
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final contentWidth = min(constraints.maxWidth, 720.0);
+              return Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: contentWidth,
+                  child: Column(
+                    children: [
+                      if (_pinnedMessage != null)
+                        Material(
+                          color: const Color(0xFFFFF9C4),
+                          child: InkWell(
+                            onTap: () => _showPinnedFull(_pinnedMessage!),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.push_pin, size: 18, color: Color(0xFFF57F17)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _previewSnippet(_pinnedMessage!),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.hindSiliguri(fontSize: 14),
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right, size: 20),
+                                ],
+                              ),
                             ),
                           ),
-                          const Icon(Icons.chevron_right, size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    ListView.builder(
-                      controller: _scrollController,
-                      reverse: true,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        final sender = _senders[msg['sender_id'] as String?];
-                        return _ChatBubble(
-                          message: msg,
-                          sender: sender,
-                          isOwn: msg['sender_id'] == uid,
-                          replyParent: msg['reply_to'] != null
-                              ? _messageById(msg['reply_to'] as String)
-                              : null,
-                          formatTime: _formatTime,
-                          onLongPress: () => _onLongPressMessage(msg, uid),
-                          onTapImage: (url) => _openImageFullscreen(url),
-                          onTapFile: _openExternalUrl,
-                        );
-                      },
-                    ),
-                    if (_uploading)
-                      const ColoredBox(
-                        color: Color(0x66000000),
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
-                  ],
-                ),
-              ),
-              if (_replyingTo != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: Row(
-                    children: [
-                      Icon(Icons.reply, size: 18, color: theme.colorScheme.primary),
-                      const SizedBox(width: 8),
+                        ),
                       Expanded(
-                        child: Text(
-                          _previewSnippet(_replyingTo!),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.hindSiliguri(fontSize: 13),
+                        child: Stack(
+                          children: [
+                            ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = _messages[index];
+                                final sender = _senders[msg['sender_id'] as String?];
+                                return _ChatBubble(
+                                  layoutWidth: contentWidth,
+                                  message: msg,
+                                  sender: sender,
+                                  isOwn: msg['sender_id'] == uid,
+                                  replyParent: msg['reply_to'] != null
+                                      ? _messageById(msg['reply_to'] as String)
+                                      : null,
+                                  formatTime: _formatTime,
+                                  onLongPress: () => _onLongPressMessage(msg, uid),
+                                  onTapImage: (url) => _openImageFullscreen(url),
+                                  onTapFile: _openExternalUrl,
+                                );
+                              },
+                            ),
+                            if (_uploading)
+                              const ColoredBox(
+                                color: Color(0x66000000),
+                                child: Center(child: CircularProgressIndicator()),
+                              ),
+                          ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => setState(() => _replyingTo = null),
+                      if (_replyingTo != null)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: Row(
+                            children: [
+                              Icon(Icons.reply, size: 18, color: theme.colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _previewSnippet(_replyingTo!),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.hindSiliguri(fontSize: 13),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 20),
+                                onPressed: () => setState(() => _replyingTo = null),
+                              ),
+                            ],
+                          ),
+                        ),
+                      SafeArea(
+                        child: Material(
+                          elevation: 8,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              bottom: MediaQuery.viewInsetsOf(context).bottom,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.attach_file),
+                                  onPressed: _uploading || _sending
+                                      ? null
+                                      : () => _showAttachmentOptions(uid),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _textController,
+                                    minLines: 1,
+                                    maxLines: 4,
+                                    enabled: !_sending && !_uploading,
+                                    decoration: InputDecoration(
+                                      hintText: 'মেসেজ লিখুন...',
+                                      hintStyle: GoogleFonts.hindSiliguri(),
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 12,
+                                      ),
+                                    ),
+                                    style: GoogleFonts.hindSiliguri(),
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                ),
+                                IconButton.filled(
+                                  onPressed: (_sending ||
+                                          _uploading ||
+                                          _textController.text.trim().isEmpty)
+                                      ? null
+                                      : () => _sendText(uid),
+                                  icon: _sending
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.send_rounded),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              SafeArea(
-                child: Material(
-                  elevation: 8,
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      bottom: MediaQuery.viewInsetsOf(context).bottom,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.attach_file),
-                          onPressed: _uploading || _sending
-                              ? null
-                              : () => _showAttachmentOptions(uid),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _textController,
-                            minLines: 1,
-                            maxLines: 4,
-                            enabled: !_sending && !_uploading,
-                            decoration: InputDecoration(
-                              hintText: 'মেসেজ লিখুন...',
-                              hintStyle: GoogleFonts.hindSiliguri(),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 12,
-                              ),
-                            ),
-                            style: GoogleFonts.hindSiliguri(),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                        IconButton.filled(
-                          onPressed: (_sending ||
-                                  _uploading ||
-                                  _textController.text.trim().isEmpty)
-                              ? null
-                              : () => _sendText(uid),
-                          icon: _sending
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.send_rounded),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         );
       },
       loading: () => Scaffold(
-        appBar: AppBar(title: Text('চ্যাট', style: GoogleFonts.hindSiliguri())),
+        drawer: _shellDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(title: Text('চ্যাট', style: GoogleFonts.hindSiliguri())),
+        drawer: _shellDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
+        ),
         body: Center(child: Text('$e')),
       ),
     );
@@ -699,6 +786,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
+    required this.layoutWidth,
     required this.message,
     required this.sender,
     required this.isOwn,
@@ -709,6 +797,8 @@ class _ChatBubble extends StatelessWidget {
     required this.onTapFile,
   });
 
+  /// Width of the chat column (parent); used for responsive bubble/image max width.
+  final double layoutWidth;
   final Map<String, dynamic> message;
   final UserModel? sender;
   final bool isOwn;
@@ -721,6 +811,8 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bubbleMaxW = layoutWidth * 0.82;
+    final imageMaxW = (layoutWidth * 0.68).clamp(120.0, 320.0);
     final type = message['type']?.toString() ?? 'text';
     final content = message['content']?.toString() ?? '';
     final fileUrl = message['file_url']?.toString();
@@ -733,7 +825,7 @@ class _ChatBubble extends StatelessWidget {
       if (isAdmin) {
         bubbleColor = AppTheme.accent.withValues(alpha: 0.35);
       } else {
-        bubbleColor = AppTheme.primary.withValues(alpha: 0.9);
+        bubbleColor = theme.colorScheme.primary.withValues(alpha: 0.9);
       }
     } else {
       align = Alignment.centerLeft;
@@ -761,7 +853,7 @@ class _ChatBubble extends StatelessWidget {
           onLongPress: onLongPress,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+              maxWidth: bubbleMaxW,
             ),
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -773,11 +865,11 @@ class _ChatBubble extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!isOwn && sender != null) ...[
+                    if (!isOwn) ...[
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (isAdmin) ...[
+                          if (sender != null && isAdmin) ...[
                             Icon(
                               Icons.workspace_premium_rounded,
                               size: 16,
@@ -787,7 +879,7 @@ class _ChatBubble extends StatelessWidget {
                           ],
                           Flexible(
                             child: Text(
-                              sender!.fullNameBn,
+                              sender?.fullNameBn ?? 'সদস্য',
                               style: GoogleFonts.hindSiliguri(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -856,12 +948,12 @@ class _ChatBubble extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
                             imageUrl: fileUrl,
-                            width: 220,
+                            width: imageMaxW,
                             fit: BoxFit.cover,
-                            placeholder: (context, url) => const SizedBox(
-                              width: 220,
+                            placeholder: (context, url) => SizedBox(
+                              width: imageMaxW,
                               height: 140,
-                              child: Center(child: CircularProgressIndicator()),
+                              child: const Center(child: CircularProgressIndicator()),
                             ),
                           ),
                         ),

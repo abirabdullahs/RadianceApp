@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../shared/models/exam_model.dart';
+import '../../widgets/student_drawer.dart';
 import '../repositories/student_exam_repository.dart';
 
 final _studentExamsProvider =
@@ -19,7 +20,11 @@ class StudentExamsScreen extends ConsumerWidget {
     final async = ref.watch(_studentExamsProvider);
 
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
       ),
       body: async.when(

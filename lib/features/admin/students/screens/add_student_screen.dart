@@ -7,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/constants.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../../../shared/models/user_model.dart';
 import '../repositories/student_repository.dart';
 
@@ -25,6 +27,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
   final _phone = TextEditingController();
   final _guardianPhone = TextEditingController();
   final _dobDisplay = TextEditingController();
+  final _college = TextEditingController();
   final _address = TextEditingController();
 
   final _repo = StudentRepository();
@@ -42,6 +45,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
     _phone.dispose();
     _guardianPhone.dispose();
     _dobDisplay.dispose();
+    _college.dispose();
     _address.dispose();
     super.dispose();
   }
@@ -117,6 +121,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
         guardianPhone:
             _guardianPhone.text.trim().isEmpty ? null : _guardianPhone.text.trim(),
         address: _address.text.trim().isEmpty ? null : _address.text.trim(),
+        college: _college.text.trim().isEmpty ? null : _college.text.trim(),
         classLevel: _classLevel,
         isActive: true,
       );
@@ -142,6 +147,14 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
               ),
               const SizedBox(height: 12),
               Text(
+                'লগইন: লগইন মোবাইল নম্বর দিন। পাসওয়ার্ড: নম্বরের শেষ ৯ সংখ্যা (${studentPasswordFromPhoneDigits(_phone.text.trim())})।',
+                style: GoogleFonts.hindSiliguri(
+                  fontSize: 13,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
                 'শিক্ষার্থী আইডি:',
                 style: GoogleFonts.hindSiliguri(
                   fontSize: 12,
@@ -154,7 +167,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
                 style: GoogleFonts.nunito(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.primary,
+                  color: context.themePrimary,
                 ),
               ),
             ],
@@ -202,7 +215,11 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text(
           'নতুন শিক্ষার্থী যোগ করুন',
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
@@ -301,6 +318,14 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
                       ? null
                       : (v) => setState(() => _classLevel = v ?? ClassLevel.ssc),
                 ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _college,
+                  enabled: !_submitting,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _decoration('কলেজ / স্কুল'),
+                  style: GoogleFonts.hindSiliguri(),
+                ),
                 const SizedBox(height: 24),
                 _sectionTitle('ঠিকানা'),
                 const SizedBox(height: 12),
@@ -317,7 +342,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
                   child: ElevatedButton(
                     onPressed: _submitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: context.themePrimary,
                       foregroundColor: scheme.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -354,7 +379,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
       style: GoogleFonts.hindSiliguri(
         fontSize: 16,
         fontWeight: FontWeight.w700,
-        color: AppTheme.primary,
+        color: context.themePrimary,
       ),
     );
   }
@@ -387,7 +412,7 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
                 : null,
           ),
           Material(
-            color: AppTheme.primary,
+            color: context.themePrimary,
             shape: const CircleBorder(),
             child: InkWell(
               onTap: _submitting ? null : _pickPhoto,

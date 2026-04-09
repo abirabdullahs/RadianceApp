@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../../../shared/models/user_model.dart';
 import '../repositories/student_repository.dart';
 
@@ -35,12 +36,16 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
     final async = ref.watch(_studentListProvider(_query));
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/students/add'),
-        backgroundColor: AppTheme.primary,
+        backgroundColor: context.themePrimary,
         icon: const Icon(Icons.person_add),
         label: Text('নতুন', style: GoogleFonts.hindSiliguri()),
       ),
@@ -74,10 +79,10 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
                     final u = list[i];
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: AppTheme.primary.withOpacity(0.15),
+                        backgroundColor: context.themePrimary.withOpacity(0.15),
                         child: Text(
                           u.fullNameBn.isNotEmpty ? u.fullNameBn[0] : '?',
-                          style: TextStyle(color: AppTheme.primary),
+                          style: TextStyle(color: context.themePrimary),
                         ),
                       ),
                       title: Text(u.fullNameBn, style: GoogleFonts.hindSiliguri()),

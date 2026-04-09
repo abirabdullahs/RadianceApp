@@ -4,7 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../supabase_client.dart';
 
 /// Invokes the Supabase Edge Function `send-notification` to deliver FCM for queued rows.
-/// Requires the function to be deployed and secrets (FCM) configured in the Supabase project.
+///
+/// Deploy: `supabase functions deploy send-notification`
+/// Secret: `FCM_SERVICE_ACCOUNT_JSON` = Firebase service account JSON (same GCP project as the app).
 class NotificationEdgeService {
   NotificationEdgeService({SupabaseClient? client})
       : _client = client ?? supabaseClient;

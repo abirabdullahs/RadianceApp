@@ -39,6 +39,9 @@ class PaymentModel {
     required this.courseId,
     required this.forMonth,
     required this.amount,
+    required this.subtotal,
+    this.discount = 0,
+    this.feeServiceId,
     this.paymentMethod,
     required this.status,
     this.note,
@@ -53,7 +56,18 @@ class PaymentModel {
 
   /// First day of the billing month (DATE in DB).
   final DateTime forMonth;
+
+  /// Grand total (after discount).
   final double amount;
+
+  /// Before discount (equals [amount] when discount is 0).
+  final double subtotal;
+
+  /// Taka discounted from subtotal.
+  final double discount;
+
+  /// Optional link to `fee_services`.
+  final String? feeServiceId;
   final PaymentMethod? paymentMethod;
   final PaymentStatus status;
   final String? note;
@@ -61,13 +75,19 @@ class PaymentModel {
   final String? createdBy;
 
   factory PaymentModel.fromJson(Map<String, dynamic> json) {
+    final amt = _parseDouble(json['amount']);
+    final parsedSub =
+        json['subtotal'] == null ? amt : _parseDouble(json['subtotal']);
     return PaymentModel(
       id: json['id'] as String,
       voucherNo: json['voucher_no'] as String,
       studentId: json['student_id'] as String,
       courseId: json['course_id'] as String,
       forMonth: _parseDateRequired(json['for_month']),
-      amount: _parseDouble(json['amount']),
+      amount: amt,
+      subtotal: parsedSub,
+      discount: _parseDouble(json['discount'] ?? 0),
+      feeServiceId: json['fee_service_id'] as String?,
       paymentMethod: PaymentMethod.fromJson(json['payment_method'] as String?),
       status: PaymentStatus.fromJson(json['status'] as String? ?? 'paid'),
       note: json['note'] as String?,
@@ -84,6 +104,9 @@ class PaymentModel {
       'course_id': courseId,
       'for_month': _dateToSqlDate(forMonth),
       'amount': amount,
+      'subtotal': subtotal,
+      'discount': discount,
+      if (feeServiceId != null) 'fee_service_id': feeServiceId,
       'payment_method': paymentMethod?.toJson(),
       'status': status.toJson(),
       'note': note,
@@ -99,6 +122,9 @@ class PaymentModel {
     String? courseId,
     DateTime? forMonth,
     double? amount,
+    double? subtotal,
+    double? discount,
+    String? feeServiceId,
     PaymentMethod? paymentMethod,
     PaymentStatus? status,
     String? note,
@@ -112,6 +138,9 @@ class PaymentModel {
       courseId: courseId ?? this.courseId,
       forMonth: forMonth ?? this.forMonth,
       amount: amount ?? this.amount,
+      subtotal: subtotal ?? this.subtotal,
+      discount: discount ?? this.discount,
+      feeServiceId: feeServiceId ?? this.feeServiceId,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       status: status ?? this.status,
       note: note ?? this.note,

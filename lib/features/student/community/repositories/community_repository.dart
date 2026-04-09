@@ -35,4 +35,31 @@ class CommunityRepository {
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
   }
+
+  /// All course-linked groups (admin chat list). Ordered by course name.
+  Future<List<Map<String, dynamic>>> listCourseGroupsForAdmin() async {
+    final rows = await _client
+        .from(kTableCommunityGroups)
+        .select('id, name, description, course_id, courses(name)')
+        .not('course_id', 'is', null)
+        .order('name');
+
+    final list = (rows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    list.sort((a, b) {
+      final an = _courseNameFromRow(a);
+      final bn = _courseNameFromRow(b);
+      return an.compareTo(bn);
+    });
+    return list;
+  }
+
+  String _courseNameFromRow(Map<String, dynamic> row) {
+    final c = row['courses'];
+    if (c is Map) {
+      return (c['name'] as String?)?.trim() ?? '';
+    }
+    return '';
+  }
 }

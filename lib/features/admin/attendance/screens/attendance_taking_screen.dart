@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
@@ -286,14 +287,26 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
 
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: Text('হাজিরা', style: GoogleFonts.hindSiliguri())),
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_loadError != null) {
       return Scaffold(
-        appBar: AppBar(title: Text('হাজিরা', style: GoogleFonts.hindSiliguri())),
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -305,7 +318,13 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
 
     if (_students.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text('হাজিরা', style: GoogleFonts.hindSiliguri())),
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
+        ),
         body: Center(
           child: Text(
             'এই কোর্সে কোনো সক্রিয় শিক্ষার্থী নেই।',
@@ -319,7 +338,11 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
     final student = _currentStudent!;
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         toolbarHeight: 96,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -345,7 +368,7 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
               style: GoogleFonts.hindSiliguri(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: AppTheme.primary,
+                color: context.themePrimary,
               ),
             ),
           ],
@@ -353,7 +376,7 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openGridNavigator,
-        backgroundColor: AppTheme.primary,
+        backgroundColor: context.themePrimary,
         child: const Icon(Icons.grid_view_rounded),
       ),
       body: Column(
@@ -570,13 +593,13 @@ class _InitialsFallback extends StatelessWidget {
     }
     return CircleAvatar(
       radius: size / 2,
-      backgroundColor: AppTheme.primary.withValues(alpha: 0.2),
+      backgroundColor: context.themePrimary.withValues(alpha: 0.2),
       child: Text(
         initials,
         style: GoogleFonts.nunito(
           fontSize: size * 0.28,
           fontWeight: FontWeight.bold,
-          color: AppTheme.primary,
+          color: context.themePrimary,
         ),
       ),
     );

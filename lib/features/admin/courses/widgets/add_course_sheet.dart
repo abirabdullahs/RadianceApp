@@ -121,7 +121,7 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
                     style: GoogleFonts.hindSiliguri(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.primary,
+                      color: context.themePrimary,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -209,13 +209,13 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
                     onChanged: _submitting
                         ? null
                         : (v) => setState(() => _active = v),
-                    activeThumbColor: AppTheme.primary,
+                    activeThumbColor: context.themePrimary,
                   ),
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _submitting ? null : _onSubmit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: context.themePrimary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: Text(

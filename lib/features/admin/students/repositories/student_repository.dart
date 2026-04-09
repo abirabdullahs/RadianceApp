@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -48,7 +46,7 @@ class StudentRepository {
       final escaped = raw.replaceAll(RegExp(r'[%*,()]'), '');
       final p = '%$escaped%';
       q = q.or(
-        'full_name_bn.ilike.$p,full_name_en.ilike.$p,phone.ilike.$p,student_id.ilike.$p',
+        'full_name_bn.ilike.$p,full_name_en.ilike.$p,phone.ilike.$p,student_id.ilike.$p,college.ilike.$p',
       );
     }
 
@@ -72,74 +70,66 @@ class StudentRepository {
     return UserModel.fromJson(Map<String, dynamic>.from(row));
   }
 
-  /// Creates Auth user (phone + password) then inserts `public.users` with the same `id`.
-  ///
-  /// Restores the admin session afterward via [Session.refreshToken] so the admin
-  /// stays signed in. Requires the dashboard to allow phone signup (confirm settings).
+  /// Creates Auth user + `public.users` via Edge Function `create-student` (service role).
+  /// Password rule: [studentPasswordFromPhoneDigits] (last 9 digits of mobile).
   Future<UserModel> addStudent(UserModel student, File? photoFile) async {
-    final adminSession = _client.auth.currentSession;
-    if (adminSession?.refreshToken == null) {
-      throw StateError('Admin session missing; cannot create student account');
+    if (_client.auth.currentSession == null) {
+      throw StateError('অ্যাডমিন সেশন নেই। আবার লগইন করুন।');
     }
-    final adminRefresh = adminSession!.refreshToken!;
-
-    final phoneE164 = _toE164Bd(student.phone);
-    final password = _randomPassword();
-
-    final signUpRes = await _client.auth.signUp(
-      phone: phoneE164,
-      password: password,
-      data: <String, dynamic>{
-        'role': UserRole.student.toJson(),
-      },
-    );
-
-    final newUser = signUpRes.user;
-    if (newUser == null) {
-      await _restoreAdminSession(adminRefresh);
-      throw StateError('Sign up did not return a user (check phone confirmation settings)');
+    // Refresh access token so Edge Function gateway accepts JWT (avoids 401 invalid JWT).
+    final refreshed = await _client.auth.refreshSession();
+    if (refreshed.session == null) {
+      throw StateError('সেশন মেয়াদ শেষ। লগআউট করে আবার লগইন করুন।');
     }
 
-    try {
-      String? avatarUrl;
-      if (photoFile != null) {
-        avatarUrl = await _uploadAvatar(photoFile, newUser.id);
-      }
+    final body = <String, dynamic>{
+      'phone': student.phone.trim(),
+      'full_name_bn': student.fullNameBn,
+      if (student.fullNameEn != null && student.fullNameEn!.trim().isNotEmpty)
+        'full_name_en': student.fullNameEn!.trim(),
+      if (student.guardianPhone != null && student.guardianPhone!.trim().isNotEmpty)
+        'guardian_phone': student.guardianPhone!.trim(),
+      if (student.address != null && student.address!.trim().isNotEmpty)
+        'address': student.address!.trim(),
+      if (student.college != null && student.college!.trim().isNotEmpty)
+        'college': student.college!.trim(),
+      if (student.classLevel != null) 'class_level': student.classLevel!.toJson(),
+      if (student.dateOfBirth != null)
+        'date_of_birth':
+            '${student.dateOfBirth!.year.toString().padLeft(4, '0')}-'
+            '${student.dateOfBirth!.month.toString().padLeft(2, '0')}-'
+            '${student.dateOfBirth!.day.toString().padLeft(2, '0')}',
+    };
 
-      final now = DateTime.now().toUtc().toIso8601String();
-      final row = <String, dynamic>{
-        'id': newUser.id,
-        'phone': student.phone,
-        'email': student.email,
-        'full_name_bn': student.fullNameBn,
-        'full_name_en': student.fullNameEn,
-        'avatar_url': avatarUrl ?? student.avatarUrl,
-        'role': UserRole.student.toJson(),
-        'student_id': student.studentId,
-        'date_of_birth': student.dateOfBirth == null
-            ? null
-            : '${student.dateOfBirth!.year.toString().padLeft(4, '0')}-'
-                '${student.dateOfBirth!.month.toString().padLeft(2, '0')}-'
-                '${student.dateOfBirth!.day.toString().padLeft(2, '0')}',
-        'guardian_phone': student.guardianPhone,
-        'address': student.address,
-        'class_level': student.classLevel?.toJson(),
-        'fcm_token': student.fcmToken,
-        'is_active': student.isActive,
-        'created_at': now,
-        'updated_at': now,
-      };
+    // Non-2xx responses throw [FunctionException]; they never return a [FunctionResponse].
+    final FunctionResponse res = await _invokeCreateStudent(body);
 
-      final inserted = await _client.from(kTableUsers).insert(row).select().single();
-
-      return UserModel.fromJson(Map<String, dynamic>.from(inserted));
-    } finally {
-      await _restoreAdminSession(adminRefresh);
+    final raw = res.data;
+    if (raw is! Map) {
+      throw StateError('Unexpected response from create-student');
     }
-  }
+    final data = Map<String, dynamic>.from(raw);
+    final rowRaw = data['row'];
+    if (rowRaw is! Map) {
+      throw StateError('create-student: missing row');
+    }
+    var model = UserModel.fromJson(Map<String, dynamic>.from(rowRaw));
 
-  Future<void> _restoreAdminSession(String adminRefreshToken) async {
-    await _client.auth.setSession(adminRefreshToken);
+    if (photoFile != null) {
+      final url = await _uploadAvatar(photoFile, model.id);
+      final updated = await _client
+          .from(kTableUsers)
+          .update({
+            'avatar_url': url,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', model.id)
+          .select()
+          .single();
+      model = UserModel.fromJson(Map<String, dynamic>.from(updated));
+    }
+
+    return model;
   }
 
   Future<UserModel> updateStudent(UserModel student, File? newPhoto) async {
@@ -164,12 +154,48 @@ class StudentRepository {
                   '${student.dateOfBirth!.day.toString().padLeft(2, '0')}',
           'guardian_phone': student.guardianPhone,
           'address': student.address,
+          'college': student.college,
           'class_level': student.classLevel?.toJson(),
           'fcm_token': student.fcmToken,
           'is_active': student.isActive,
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('id', student.id)
+        .select()
+        .single();
+
+    return UserModel.fromJson(Map<String, dynamic>.from(updated));
+  }
+
+  /// Student self-service: updates name, contact extras, avatar — not phone/email/student_id/role.
+  Future<UserModel> updateMyProfile(UserModel student, File? newPhoto) async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) throw StateError('লগইন নেই');
+    if (student.id != uid) throw StateError('অননুমোদিত');
+
+    String? avatarUrl = student.avatarUrl;
+    if (newPhoto != null) {
+      avatarUrl = await _uploadAvatar(newPhoto, student.id);
+    }
+
+    final updated = await _client
+        .from(kTableUsers)
+        .update({
+          'full_name_bn': student.fullNameBn,
+          'full_name_en': student.fullNameEn,
+          'avatar_url': avatarUrl,
+          'date_of_birth': student.dateOfBirth == null
+              ? null
+              : '${student.dateOfBirth!.year.toString().padLeft(4, '0')}-'
+                  '${student.dateOfBirth!.month.toString().padLeft(2, '0')}-'
+                  '${student.dateOfBirth!.day.toString().padLeft(2, '0')}',
+          'guardian_phone': student.guardianPhone,
+          'address': student.address,
+          'college': student.college,
+          'class_level': student.classLevel?.toJson(),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', uid)
         .select()
         .single();
 
@@ -338,6 +364,60 @@ class StudentRepository {
         .toList();
   }
 
+  Future<FunctionResponse> _invokeCreateStudent(Map<String, dynamic> body) async {
+    Future<FunctionResponse> once() async {
+      final session = _client.auth.currentSession;
+      if (session == null) {
+        throw StateError('অ্যাডমিন সেশন নেই। আবার লগইন করুন।');
+      }
+      // Force Bearer + apikey on each call. AuthHttpClient uses putIfAbsent on
+      // Authorization; a stale header on the request would otherwise block the
+      // fresh JWT and cause gateway "invalid JWT".
+      return _client.functions.invoke(
+        'create-student',
+        body: body,
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'apikey': resolvedSupabaseAnonKey,
+        },
+      );
+    }
+
+    try {
+      return await once();
+    } on FunctionException catch (e) {
+      if (e.status == 401) {
+        final again = await _client.auth.refreshSession();
+        if (again.session == null) {
+          throw StateError('সেশন মেয়াদ শেষ। লগআউট করে আবার লগইন করুন।');
+        }
+        try {
+          return await once();
+        } on FunctionException catch (e2) {
+          _throwFromFunctionException(e2);
+        }
+      }
+      _throwFromFunctionException(e);
+    }
+  }
+
+  Never _throwFromFunctionException(FunctionException e) {
+    final raw = e.details;
+    final msg = raw is Map
+        ? (raw['error'] ?? raw['message'] ?? raw.toString())
+        : (raw is String && raw.isNotEmpty)
+            ? raw
+            : raw?.toString() ?? 'HTTP ${e.status}';
+    final hint = raw is Map ? raw['hint'] as String? : null;
+    final rp = e.reasonPhrase;
+    final prefix = (rp != null && rp.isNotEmpty) ? '$rp: ' : '';
+    throw StateError(
+      e.status == 401
+          ? '$prefix$msg${hint != null ? ' ($hint)' : ''} — অ্যাডমিন হিসেবে আবার লগইন করুন।'
+          : '$prefix$msg',
+    );
+  }
+
   Future<String> _uploadAvatar(File file, String userId) async {
     final ext = _fileExtension(file.path);
     final path = 'users/$userId/avatar.$ext';
@@ -392,34 +472,4 @@ class StudentRepository {
         return 'image/jpeg';
     }
   }
-
-  static String _randomPassword() {
-    final r = Random.secure();
-    final bytes = List<int>.generate(48, (_) => r.nextInt(256));
-    return base64Url.encode(bytes);
-  }
-}
-
-/// Bangladesh local or E.164 → `+8801...` for Supabase Auth.
-String _toE164Bd(String raw) {
-  var s = raw.trim().replaceAll(RegExp(r'[\s-]'), '');
-  if (s.isEmpty) {
-    throw const FormatException('Phone number is empty');
-  }
-  if (s.startsWith('+')) {
-    return s;
-  }
-  if (s.startsWith('00')) {
-    s = s.substring(2);
-  }
-  if (s.startsWith('0')) {
-    s = '880${s.substring(1)}';
-  } else if (!s.startsWith('880')) {
-    if (s.length == 10) {
-      s = '880$s';
-    } else {
-      throw FormatException('Unsupported phone format: $raw');
-    }
-  }
-  return '+$s';
 }

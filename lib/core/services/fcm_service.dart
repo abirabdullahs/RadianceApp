@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../firebase_options.dart';
 import '../constants.dart';
@@ -46,60 +45,68 @@ class FcmService {
       return;
     }
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    try {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    await _local.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
-      ),
-      onDidReceiveNotificationResponse: _onLocalNotificationTap,
-    );
+      await _local.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(),
+        ),
+        onDidReceiveNotificationResponse: _onLocalNotificationTap,
+      );
 
-    await _local
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_androidChannel);
+      await _local
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_androidChannel);
 
-    final messaging = FirebaseMessaging.instance;
-    await messaging.setAutoInitEnabled(true);
-    final settings = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      debugPrint('FCM permission denied');
-    }
-
-    final token = await messaging.getToken();
-    if (token != null) {
-      await _persistToken(token);
-    }
-
-    FirebaseMessaging.instance.onTokenRefresh.listen(_persistToken);
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      final n = message.notification;
-      if (n != null) {
-        await _local.show(
-          message.hashCode,
-          n.title ?? kAppName,
-          n.body,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              _androidChannel.id,
-              _androidChannel.name,
-              channelDescription: _androidChannel.description,
-              importance: Importance.defaultImportance,
-              priority: Priority.defaultPriority,
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
-          payload: message.data['action_route'] as String?,
-        );
+      final messaging = FirebaseMessaging.instance;
+      await messaging.setAutoInitEnabled(true);
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        debugPrint('FCM permission denied');
       }
-    });
+
+      final token = await messaging.getToken();
+      if (token != null) {
+        await _persistToken(token);
+      }
+
+      FirebaseMessaging.instance.onTokenRefresh.listen(_persistToken);
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        final n = message.notification;
+        if (n != null) {
+          await _local.show(
+            message.hashCode,
+            n.title ?? kAppName,
+            n.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                _androidChannel.id,
+                _androidChannel.name,
+                channelDescription: _androidChannel.description,
+                importance: Importance.defaultImportance,
+                priority: Priority.defaultPriority,
+              ),
+              iOS: const DarwinNotificationDetails(),
+            ),
+            payload: message.data['action_route'] as String?,
+          );
+        }
+      });
+    } catch (e, st) {
+      // Placeholder firebase_options / missing google-services.json → invalid API key, etc.
+      debugPrint(
+        'FCM not active (run `flutterfire configure` and add real google-services.json): $e',
+      );
+      debugPrint('$st');
+    }
   }
 
   static void _onLocalNotificationTap(NotificationResponse response) {

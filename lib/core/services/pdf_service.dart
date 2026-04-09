@@ -16,12 +16,15 @@ class PdfService {
   Future<Uint8List> generateVoucherPdf(
     PaymentModel payment,
     UserModel student,
-    CourseModel course,
-  ) async {
+    CourseModel course, {
+    String? serviceName,
+  }) async {
     final paidDate = payment.paidAt ?? DateTime.now();
     final monthLabel = _formatMonthEnglish(payment.forMonth);
     final methodLabel = payment.paymentMethod?.name ?? '—';
-    final amountWords = _amountInWordsTaka(payment.amount);
+    final grandTotal = payment.amount;
+    final amountWords = _amountInWordsTaka(grandTotal);
+    final serviceLabel = serviceName?.trim().isNotEmpty == true ? serviceName!.trim() : '—';
     final displayName = (student.fullNameEn != null &&
             student.fullNameEn!.trim().isNotEmpty)
         ? student.fullNameEn!.trim()
@@ -77,8 +80,12 @@ class PdfService {
                 _row('Student ID', student.studentId!),
               _row('Phone', student.phone),
               _row('Course', course.name),
+              _row('Service', serviceLabel),
               _row('Billing month', monthLabel),
-              _row('Amount (figures)', '৳ ${payment.amount.toStringAsFixed(2)}'),
+              _row('Subtotal', '৳ ${payment.subtotal.toStringAsFixed(2)}'),
+              if (payment.discount > 0)
+                _row('Discount', '- ৳ ${payment.discount.toStringAsFixed(2)}'),
+              _row('Grand total', '৳ ${grandTotal.toStringAsFixed(2)}'),
               _row('Amount (in words)', amountWords),
               _row('Payment method', methodLabel),
               if (payment.note != null && payment.note!.trim().isNotEmpty)

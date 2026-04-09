@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../courses/providers/courses_provider.dart';
 
 /// Pick course + date, then open [AttendanceTakingScreen].
@@ -23,7 +24,11 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     final coursesAsync = ref.watch(coursesProvider);
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
       ),
       body: coursesAsync.when(
@@ -90,7 +95,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                   context.push(path);
                 },
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
+                  backgroundColor: context.themePrimary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: Text(

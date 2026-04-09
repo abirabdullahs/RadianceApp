@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/result_model.dart';
 import '../../admin/students/repositories/student_repository.dart';
+import '../widgets/student_drawer.dart';
 
 class StudentResultsScreen extends StatefulWidget {
   const StudentResultsScreen({super.key});
@@ -29,7 +30,11 @@ class _StudentResultsScreenState extends State<StudentResultsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('ফলাফল', style: GoogleFonts.hindSiliguri()),
       ),
       body: FutureBuilder<List<ResultModel>>(

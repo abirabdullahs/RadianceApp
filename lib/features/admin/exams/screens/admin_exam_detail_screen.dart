@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../../../../shared/models/question_model.dart';
 import '../repositories/exam_repository.dart';
@@ -38,11 +39,24 @@ class AdminExamDetailScreen extends ConsumerWidget {
         detail: d,
         onRefresh: () => ref.invalidate(_examDetailProvider(examId)),
       ),
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      loading: () => Scaffold(
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => Scaffold(
-        appBar: AppBar(),
+        drawer: const AdminDrawer(),
+        appBar: AppBar(
+          leading: const AppBarDrawerLeading(),
+          automaticallyImplyLeading: false,
+          leadingWidth: leadingWidthForDrawer(context),
+          title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
+        ),
         body: Center(child: Text('$e')),
       ),
     );
@@ -73,12 +87,16 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
     final qs = widget.detail.questions;
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text(e.title, style: GoogleFonts.hindSiliguri()),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addQuestion(context),
-        backgroundColor: AppTheme.primary,
+        backgroundColor: context.themePrimary,
         child: const Icon(Icons.add),
       ),
       body: ListView(

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../../../../shared/models/question_model.dart';
+import '../../widgets/student_drawer.dart';
 import '../repositories/student_exam_repository.dart';
 
 class _TakeBundle {
@@ -68,13 +69,24 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            drawer: const StudentDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+            ),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
         if (snap.hasError) {
           return Scaffold(
-            appBar: AppBar(),
+            drawer: const StudentDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+            ),
             body: Center(child: Text('${snap.error}')),
           );
         }
@@ -82,14 +94,24 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
         final qs = b.questions;
         if (qs.isEmpty) {
           return Scaffold(
-            appBar: AppBar(title: Text(b.exam.title, style: GoogleFonts.hindSiliguri())),
+            drawer: const StudentDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+              title: Text(b.exam.title, style: GoogleFonts.hindSiliguri()),
+            ),
             body: Center(
               child: Text('প্রশ্ন নেই', style: GoogleFonts.hindSiliguri()),
             ),
           );
         }
         return Scaffold(
+          drawer: const StudentDrawer(),
           appBar: AppBar(
+            leading: const AppBarDrawerLeading(),
+            automaticallyImplyLeading: false,
+            leadingWidth: leadingWidthForDrawer(context),
             title: Text(b.exam.title, style: GoogleFonts.hindSiliguri()),
             actions: [
               TextButton(
@@ -106,7 +128,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
               LinearProgressIndicator(
                 value: (_index + 1) / qs.length,
                 backgroundColor: Colors.grey.shade200,
-                color: AppTheme.primary,
+                color: context.themePrimary,
               ),
               Padding(
                 padding: const EdgeInsets.all(8),

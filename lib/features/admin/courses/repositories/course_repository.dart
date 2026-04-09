@@ -6,7 +6,9 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/chapter_model.dart';
+import '../../../../shared/models/chapter_suggestion_model.dart';
 import '../../../../shared/models/course_model.dart';
+import '../../../../shared/models/note_model.dart';
 import '../../../../shared/models/subject_model.dart';
 
 /// Course / subject / chapter data access (Supabase + Storage `thumbnails` bucket).
@@ -184,6 +186,126 @@ class CourseRepository {
 
   Future<void> deleteChapter(String id) async {
     await _client.from(kTableChapters).delete().eq('id', id);
+  }
+
+  /// Notes for a chapter (admin: includes unpublished).
+  Future<List<NoteModel>> getNotesForChapter(String chapterId) async {
+    final rows = await _client
+        .from(kTableNotes)
+        .select()
+        .eq('chapter_id', chapterId)
+        .order('display_order', ascending: true);
+    final list = rows as List<dynamic>;
+    return list
+        .map((e) => NoteModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// Next [display_order] for a new note in this chapter.
+  Future<int> nextNoteDisplayOrder(String chapterId) async {
+    final rows = await _client
+        .from(kTableNotes)
+        .select('display_order')
+        .eq('chapter_id', chapterId)
+        .order('display_order', ascending: false)
+        .limit(1);
+    final list = rows as List<dynamic>;
+    if (list.isEmpty) return 0;
+    final v = Map<String, dynamic>.from(list.first as Map)['display_order'];
+    if (v is num) return v.toInt() + 1;
+    return 0;
+  }
+
+  /// [type] e.g. `lecture` (markdown + optional video [fileUrl]).
+  Future<NoteModel> addNote(NoteModel note) async {
+    final id = _uuid.v4();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final inserted = await _client.from(kTableNotes).insert({
+      'id': id,
+      'chapter_id': note.chapterId,
+      'title': note.title,
+      'description': note.description,
+      'type': note.type,
+      'file_url': note.fileUrl,
+      'content': note.content,
+      'is_published': note.isPublished ?? true,
+      'display_order': note.displayOrder ?? 0,
+      'created_by': _client.auth.currentUser?.id,
+      'created_at': now,
+      'updated_at': now,
+    }).select().single();
+
+    return NoteModel.fromJson(Map<String, dynamic>.from(inserted));
+  }
+
+  Future<void> updateNote(NoteModel note) async {
+    await _client.from(kTableNotes).update({
+      'title': note.title,
+      'description': note.description,
+      'type': note.type,
+      'file_url': note.fileUrl,
+      'content': note.content,
+      'is_published': note.isPublished,
+      'display_order': note.displayOrder,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', note.id);
+  }
+
+  Future<void> deleteNote(String id) async {
+    await _client.from(kTableNotes).delete().eq('id', id);
+  }
+
+  /// Suggestions linked to a chapter ([chapter_id] set in DB).
+  Future<List<ChapterSuggestionModel>> getSuggestionsForChapter(String chapterId) async {
+    final rows = await _client
+        .from(kTableSuggestions)
+        .select()
+        .eq('chapter_id', chapterId)
+        .order('created_at', ascending: false);
+    final list = rows as List<dynamic>;
+    return list
+        .map(
+          (e) => ChapterSuggestionModel.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
+        .toList();
+  }
+
+  Future<ChapterSuggestionModel> addChapterSuggestion({
+    required String courseId,
+    required String chapterId,
+    required String title,
+    String? content,
+    String? pdfUrl,
+  }) async {
+    final id = _uuid.v4();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final inserted = await _client.from(kTableSuggestions).insert({
+      'id': id,
+      'title': title,
+      'content': content,
+      'type': 'guide',
+      'course_id': courseId,
+      'chapter_id': chapterId,
+      'pdf_url': pdfUrl,
+      'is_published': true,
+      'created_by': _client.auth.currentUser?.id,
+      'created_at': now,
+    }).select().single();
+
+    return ChapterSuggestionModel.fromJson(Map<String, dynamic>.from(inserted));
+  }
+
+  Future<void> updateChapterSuggestion(ChapterSuggestionModel s) async {
+    await _client.from(kTableSuggestions).update({
+      'title': s.title,
+      'content': s.content,
+      'pdf_url': s.pdfUrl,
+      'is_published': s.isPublished ?? true,
+    }).eq('id', s.id);
+  }
+
+  Future<void> deleteChapterSuggestion(String id) async {
+    await _client.from(kTableSuggestions).delete().eq('id', id);
   }
 
   Future<String> _uploadThumbnail(File file, String storagePrefix) async {

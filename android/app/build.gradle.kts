@@ -9,12 +9,13 @@ plugins {
 android {
     namespace = "com.example.radiance"
     compileSdk = flutter.compileSdkVersion
-    // Pin NDK explicitly: if ANDROID_SDK/ndk/<flutter.ndkVersion> is corrupted
-    // (CXX1101: missing source.properties), Gradle will download this version instead.
-    // You can also delete the broken folder and reinstall NDK from SDK Manager.
-    ndkVersion = "27.0.12077973"
+    // Pin to your installed NDK so Gradle does not pick a broken/missing ANDROID_SDK/ndk/<ver>.
+    // Change this string if you install a different NDK side-by-side version.
+    ndkVersion = "30.0.14904198"
 
     compileOptions {
+        // Required by flutter_local_notifications (java.time APIs on older Android).
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -45,4 +46,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

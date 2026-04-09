@@ -60,7 +60,7 @@ class CourseCard extends StatelessWidget {
                       child: Icon(
                         Icons.menu_book_rounded,
                         size: 40,
-                        color: AppTheme.primary,
+                        color: context.themePrimary,
                       ),
                     ),
             ),

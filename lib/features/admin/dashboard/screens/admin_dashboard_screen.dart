@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../providers/dashboard_provider.dart';
 import '../repositories/dashboard_repository.dart';
 
@@ -19,6 +20,9 @@ class AdminDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('অ্যাডমিন', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: [
           IconButton(
@@ -27,7 +31,7 @@ class AdminDashboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      drawer: _AdminDrawer(),
+      drawer: const AdminDrawer(),
       body: async.when(
         data: (data) => _DashboardBody(data: data),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -41,85 +45,6 @@ class AdminDashboardScreen extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _AdminDrawer extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: AppTheme.primary),
-            child: Text(
-              'Radiance',
-              style: GoogleFonts.hindSiliguri(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.dashboard),
-            title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.school),
-            title: Text('কোর্স', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/courses');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/students');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.payment),
-            title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/payments');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.event_available),
-            title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/attendance');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.quiz),
-            title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/exams');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.web),
-            title: Text('হোম পেজ কন্টেন্ট', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/admin/cms');
-            },
-          ),
-        ],
       ),
     );
   }
@@ -144,7 +69,7 @@ class _DashboardBody extends ConsumerWidget {
         children: [
           Text(
             _greetingLine(),
-            style: GoogleFonts.hindSiliguri(fontSize: 16, color: AppTheme.primary),
+            style: GoogleFonts.hindSiliguri(fontSize: 16, color: context.themePrimary),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -309,7 +234,7 @@ class _QuickChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ActionChip(
-      avatar: Icon(icon, size: 20, color: AppTheme.primary),
+      avatar: Icon(icon, size: 20, color: context.themePrimary),
       label: Text(label, style: GoogleFonts.hindSiliguri()),
       onPressed: onTap,
     );
@@ -341,7 +266,7 @@ class _RevenueBarChart extends StatelessWidget {
               barRods: [
                 BarChartRodData(
                   toY: (monthly[i]['amount'] as num?)?.toDouble() ?? 0,
-                  color: AppTheme.primary,
+                  color: context.themePrimary,
                   width: 16,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                 ),
@@ -459,7 +384,7 @@ class _CoursePieChart extends StatelessWidget {
       return Center(child: Text('০ জন', style: GoogleFonts.hindSiliguri()));
     }
     final colors = [
-      AppTheme.primary,
+      context.themePrimary,
       AppTheme.accent,
       Colors.teal,
       Colors.deepOrange,
@@ -479,7 +404,6 @@ class _CoursePieChart extends StatelessWidget {
           titleStyle: const TextStyle(color: Colors.white, fontSize: 11),
         ),
       );
-      start += pct;
     }
     return PieChart(
       PieChartData(

@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "radiance-placeholder",
-    "storage_bucket": "radiance-placeholder.appspot.com"
+    "project_number": "595891837980",
+    "project_id": "radiancebdapp",
+    "storage_bucket": "radiancebdapp.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:595891837980:android:5d3b448718136943a9d3d9",
         "android_client_info": {
           "package_name": "com.example.radiance"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDummy0000000000000000000000000"
+          "current_key": "AIzaSyC5e9DFCeRHU1cOLg87caagVCa6uuw943o"
         }
       ],
       "services": {

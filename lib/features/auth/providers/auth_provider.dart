@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../app/router.dart';
+import '../../../core/auth/profile_role_notifier.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/user_model.dart';
@@ -29,33 +30,34 @@ Future<UserModel?> currentUser(CurrentUserRef ref) async {
   return ref.watch(authRepositoryProvider).getCurrentUser();
 }
 
-/// Phone OTP actions: loading and errors exposed as [AsyncValue].
+/// Sign-in / sign-out; loading and errors exposed as [AsyncValue].
 @riverpod
 class SignIn extends _$SignIn {
   @override
   FutureOr<void> build() {}
 
-  /// Sends SMS OTP via Supabase Auth.
-  Future<void> sendOTP(String phone) async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () => ref.read(authRepositoryProvider).signInWithPhone(phone),
-    );
-  }
-
-  /// Verifies OTP, refreshes profile, then navigates by [UserModel.role].
-  Future<void> verifyOTP(String phone, String otp) async {
+  /// মোবাইল + পাসওয়ার্ড (শিক্ষার্থী) অথবা ইমেইল + পাসওয়ার্ড (অ্যাডমিন).
+  Future<void> signIn(String identifier, String password) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final repo = ref.read(authRepositoryProvider);
-      await repo.verifyOTP(phone, otp);
+      final id = identifier.trim();
+      if (id.contains('@')) {
+        await repo.signInWithEmailPassword(id, password);
+      } else {
+        await repo.signInWithPhonePassword(id, password);
+      }
       ref.invalidate(currentUserProvider);
+      await profileRoleNotifier.refresh();
       final user = await repo.getCurrentUser();
       if (user == null) {
         throw StateError('Missing user profile after sign-in');
       }
-      final path =
-          user.role == UserRole.admin ? '/admin' : '/student';
+      final path = switch (user.role) {
+        UserRole.admin => '/admin',
+        UserRole.teacher => '/teacher',
+        UserRole.student => '/student',
+      };
       await FcmService.syncTokenAfterAuth();
       appRouter.go(path);
     });
@@ -66,6 +68,7 @@ class SignIn extends _$SignIn {
     state = await AsyncValue.guard(() async {
       await ref.read(authRepositoryProvider).signOut();
       ref.invalidate(currentUserProvider);
+      await profileRoleNotifier.refresh();
       appRouter.go('/home');
     });
   }

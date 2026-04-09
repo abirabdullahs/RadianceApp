@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants.dart';
 import '../../../../core/supabase_client.dart';
+import '../../../../shared/models/fee_service_model.dart';
 import '../../../../shared/models/overdue_student_info.dart';
 import '../../../../shared/models/payment_due_model.dart';
 import '../../../../shared/models/payment_model.dart';
@@ -14,6 +15,33 @@ class PaymentRepository {
 
   final SupabaseClient _client;
   static const _uuid = Uuid();
+
+  /// Admin catalog: fee types (monthly, admission, …).
+  Future<List<FeeServiceModel>> listFeeServices() async {
+    final rows = await _client
+        .from(kTableFeeServices)
+        .select()
+        .order('sort_order', ascending: true);
+    final list = (rows as List<dynamic>)
+        .map((e) => FeeServiceModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    list.sort((a, b) => a.sortOrder != b.sortOrder
+        ? a.sortOrder.compareTo(b.sortOrder)
+        : a.name.compareTo(b.name));
+    return list;
+  }
+
+  Future<FeeServiceModel> addFeeService(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('empty name');
+    }
+    final row = await _client.from(kTableFeeServices).insert(<String, dynamic>{
+      'name': trimmed,
+      'sort_order': 50,
+    }).select().single();
+    return FeeServiceModel.fromJson(Map<String, dynamic>.from(row));
+  }
 
   /// Lists payments with optional filters. [month] is normalized to the first day of that month.
   Future<List<PaymentModel>> getPayments({
@@ -67,6 +95,54 @@ class PaymentRepository {
 
   /// Inserts a payment (empty [PaymentModel.voucherNo] lets DB trigger assign RCC-VCH-…),
   /// then marks the matching `payment_dues` row as paid for the same student/course/month.
+  Future<PaymentModel?> getPaymentById(String id) async {
+    final row = await _client.from(kTablePayments).select().eq('id', id).maybeSingle();
+    if (row == null) return null;
+    return PaymentModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  /// Updates an existing payment (voucher number unchanged).
+  Future<PaymentModel> updatePayment(PaymentModel payment) async {
+    final paidAt = payment.paidAt ?? DateTime.now();
+    final update = <String, dynamic>{
+      'student_id': payment.studentId,
+      'course_id': payment.courseId,
+      'for_month': dateToSqlDate(payment.forMonth),
+      'amount': payment.amount,
+      'subtotal': payment.subtotal,
+      'discount': payment.discount,
+      'payment_method': payment.paymentMethod?.toJson(),
+      'status': payment.status.toJson(),
+      'note': payment.note,
+      'paid_at': paidAt.toUtc().toIso8601String(),
+    };
+    if (payment.feeServiceId != null && payment.feeServiceId!.isNotEmpty) {
+      update['fee_service_id'] = payment.feeServiceId;
+    } else {
+      update['fee_service_id'] = null;
+    }
+    await _client.from(kTablePayments).update(update).eq('id', payment.id);
+    final row = await _client.from(kTablePayments).select().eq('id', payment.id).single();
+    return PaymentModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  /// Deletes a payment and restores the matching [payment_dues] row to `due` if present.
+  Future<void> deletePayment(String id) async {
+    final p = await getPaymentById(id);
+    if (p == null) return;
+    await _client.from(kTablePayments).delete().eq('id', id);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    await _client
+        .from(kTablePaymentDues)
+        .update(<String, dynamic>{
+          'status': DueStatus.due.toJson(),
+          'updated_at': nowIso,
+        })
+        .eq('student_id', p.studentId)
+        .eq('course_id', p.courseId)
+        .eq('for_month', dateToSqlDate(p.forMonth));
+  }
+
   Future<PaymentModel> addPayment(PaymentModel payment) async {
     final id = payment.id.isNotEmpty ? payment.id : _uuid.v4();
     final paidAt = payment.paidAt ?? DateTime.now();
@@ -77,12 +153,17 @@ class PaymentRepository {
       'course_id': payment.courseId,
       'for_month': dateToSqlDate(payment.forMonth),
       'amount': payment.amount,
+      'subtotal': payment.subtotal,
+      'discount': payment.discount,
       'payment_method': payment.paymentMethod?.toJson(),
       'status': payment.status.toJson(),
       'note': payment.note,
       'paid_at': paidAt.toUtc().toIso8601String(),
       'created_by': payment.createdBy,
     };
+    if (payment.feeServiceId != null && payment.feeServiceId!.isNotEmpty) {
+      insert['fee_service_id'] = payment.feeServiceId;
+    }
 
     if (payment.voucherNo.isEmpty) {
       insert['voucher_no'] = '';

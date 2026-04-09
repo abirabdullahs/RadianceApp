@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/supabase_client.dart';
 import '../../admin/students/repositories/student_repository.dart';
+import '../widgets/student_drawer.dart';
 
 class StudentAttendanceScreen extends StatefulWidget {
   const StudentAttendanceScreen({super.key});
@@ -31,7 +32,11 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const StudentDrawer(),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
       ),
       body: FutureBuilder<Map<String, dynamic>>(

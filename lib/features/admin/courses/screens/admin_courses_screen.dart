@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../../app/theme.dart';
+import '../../widgets/admin_drawer.dart';
 import '../providers/courses_provider.dart';
 import '../widgets/add_course_sheet.dart';
 import '../widgets/course_card.dart';
@@ -53,6 +54,7 @@ class _AdminCoursesScreenState extends ConsumerState<AdminCoursesScreen> {
     final filter = ref.read(coursesProvider.notifier).filter;
 
     return Scaffold(
+      drawer: const AdminDrawer(),
       backgroundColor: scheme.surface,
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddSheet,
@@ -61,6 +63,9 @@ class _AdminCoursesScreenState extends ConsumerState<AdminCoursesScreen> {
         child: const Icon(Icons.add),
       ),
       appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
         title: Text(
           'কোর্স ব্যবস্থাপনা',
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
@@ -218,10 +223,10 @@ class _FilterChip extends StatelessWidget {
       ),
       selected: selected,
       onSelected: (_) => onTap(),
-      selectedColor: AppTheme.primary.withValues(alpha: 0.2),
-      checkmarkColor: AppTheme.primary,
+      selectedColor: context.themePrimary.withValues(alpha: 0.2),
+      checkmarkColor: context.themePrimary,
       labelStyle: TextStyle(
-        color: selected ? AppTheme.primary : scheme.onSurface,
+        color: selected ? context.themePrimary : scheme.onSurface,
       ),
     );
   }

@@ -1,7 +1,8 @@
 /// Matches `users` table (see `plan/03_database_roadmap.md`).
 enum UserRole {
   admin,
-  student;
+  student,
+  teacher;
 
   static UserRole fromJson(String value) {
     return UserRole.values.firstWhere(
@@ -48,6 +49,7 @@ class UserModel {
     this.dateOfBirth,
     this.guardianPhone,
     this.address,
+    this.college,
     this.classLevel,
     this.fcmToken,
     required this.isActive,
@@ -66,6 +68,7 @@ class UserModel {
   final DateTime? dateOfBirth;
   final String? guardianPhone;
   final String? address;
+  final String? college;
   final ClassLevel? classLevel;
   final String? fcmToken;
   final bool isActive;
@@ -85,6 +88,7 @@ class UserModel {
       dateOfBirth: _parseDate(json['date_of_birth']),
       guardianPhone: json['guardian_phone'] as String?,
       address: json['address'] as String?,
+      college: json['college'] as String?,
       classLevel: ClassLevel.fromJson(json['class_level'] as String?),
       fcmToken: json['fcm_token'] as String?,
       isActive: json['is_active'] as bool? ?? true,
@@ -110,6 +114,7 @@ class UserModel {
               '${dateOfBirth!.day.toString().padLeft(2, '0')}',
       'guardian_phone': guardianPhone,
       'address': address,
+      'college': college,
       'class_level': classLevel?.toJson(),
       'fcm_token': fcmToken,
       'is_active': isActive,
@@ -130,6 +135,7 @@ class UserModel {
     DateTime? dateOfBirth,
     String? guardianPhone,
     String? address,
+    String? college,
     ClassLevel? classLevel,
     String? fcmToken,
     bool? isActive,
@@ -148,6 +154,7 @@ class UserModel {
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
       guardianPhone: guardianPhone ?? this.guardianPhone,
       address: address ?? this.address,
+      college: college ?? this.college,
       classLevel: classLevel ?? this.classLevel,
       fcmToken: fcmToken ?? this.fcmToken,
       isActive: isActive ?? this.isActive,
