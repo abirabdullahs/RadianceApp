@@ -50,14 +50,17 @@ final filteredDuesEnrichedProvider =
   final rows = <_DueRow>[];
   for (final d in open) {
     var name = d.studentId;
+    var phone = '';
     var cname = d.courseId;
     try {
-      name = (await sRepo.getStudentById(d.studentId)).fullNameBn;
+      final u = await sRepo.getStudentById(d.studentId);
+      name = u.fullNameBn;
+      phone = u.phone;
     } catch (_) {}
     try {
       cname = (await cRepo.getCourseById(d.courseId)).name;
     } catch (_) {}
-    rows.add(_DueRow(due: d, studentName: name, courseName: cname));
+    rows.add(_DueRow(due: d, studentName: name, studentPhone: phone, courseName: cname));
   }
   return rows;
 });
@@ -66,11 +69,13 @@ class _DueRow {
   const _DueRow({
     required this.due,
     required this.studentName,
+    required this.studentPhone,
     required this.courseName,
   });
 
   final PaymentScheduleModel due;
   final String studentName;
+  final String studentPhone;
   final String courseName;
 }
 
@@ -104,6 +109,11 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
     return AdminResponsiveScaffold(
       title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
       actions: [
+        IconButton(
+          tooltip: 'SMS templates',
+          onPressed: () => context.push('/admin/payments/sms-templates'),
+          icon: const Icon(Icons.sms_outlined),
+        ),
         IconButton(
           tooltip: 'Settings',
           onPressed: () => context.push('/admin/payments/settings'),
@@ -480,6 +490,30 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
 class _DuesTab extends ConsumerWidget {
   const _DuesTab();
 
+  Future<void> _sendReminder(BuildContext context, WidgetRef ref, _DueRow row) async {
+    final d = row.due;
+    final amount = d.remainingAmount > 0 ? d.remainingAmount : d.amount;
+    final monthLabel = d.forMonth == null ? 'এই' : DateFormat.yMMMM().format(d.forMonth!);
+    try {
+      await ref.read(smsServiceProvider).notifyDueReminder(
+            phone: row.studentPhone,
+            studentName: row.studentName,
+            monthLabel: monthLabel,
+            feeTypeLabel: d.paymentTypeCode,
+            amountLabel: amount.toStringAsFixed(0),
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('SMS reminder queued', style: GoogleFonts.hindSiliguri())),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(filteredDuesEnrichedProvider);
@@ -507,9 +541,21 @@ class _DuesTab extends ConsumerWidget {
                   '${r.courseName} · ${d.forMonth == null ? '—' : DateFormat.yMMMM().format(d.forMonth!)} · ${d.status.name}',
                   style: GoogleFonts.nunito(fontSize: 12),
                 ),
-                trailing: Text(
-                  fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
-                  style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      tooltip: 'SMS reminder',
+                      icon: const Icon(Icons.sms_outlined),
+                      onPressed: r.studentPhone.isEmpty
+                          ? null
+                          : () => _sendReminder(context, ref, r),
+                    ),
+                  ],
                 ),
               );
             },

@@ -16,6 +16,7 @@ import '../features/admin/payments/screens/admin_payment_discounts_screen.dart';
 import '../features/admin/payments/screens/admin_payments_hub_screen.dart';
 import '../features/admin/payments/screens/admin_payment_reports_screen.dart';
 import '../features/admin/payments/screens/admin_payment_settings_screen.dart';
+import '../features/admin/payments/screens/admin_payment_sms_templates_screen.dart';
 import '../features/admin/exams/screens/admin_exam_detail_screen.dart';
 import '../features/admin/exams/screens/admin_exam_editor_screen.dart';
 import '../features/admin/exams/screens/admin_exams_list_screen.dart';
@@ -166,6 +167,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/admin/payments/settings',
       builder: (context, state) => const AdminPaymentSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/admin/payments/sms-templates',
+      builder: (context, state) => const AdminPaymentSmsTemplatesScreen(),
     ),
     GoRoute(
       path: '/admin/attendance/:courseId/:date',

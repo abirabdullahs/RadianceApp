@@ -7,8 +7,8 @@ import 'package:intl/intl.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
 import '../../../core/supabase_client.dart';
-import '../../../shared/models/payment_due_model.dart';
-import '../../../shared/models/payment_model.dart';
+import '../../../shared/models/payment_ledger_model.dart';
+import '../../../shared/models/payment_schedule_model.dart';
 import '../../admin/payments/repositories/payment_repository.dart';
 import '../../admin/students/repositories/student_repository.dart';
 import '../../doubts/repositories/doubt_repository.dart';
@@ -38,10 +38,14 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
     final month = DateTime.now();
     final ym = '${month.year}-${month.month.toString().padLeft(2, '0')}';
     final att = await StudentRepository().getStudentAttendanceSummary(uid, ym);
-    final dues = await PaymentRepository().getDues(studentId: uid);
-    final openDues = dues.where((d) => d.status == DueStatus.due).toList();
-    final openDueTotal = openDues.fold<double>(0, (a, d) => a + d.amount);
-    final payments = await PaymentRepository().getPayments(studentId: uid);
+    final paymentRepo = PaymentRepository();
+    final dues = await paymentRepo.getPaymentSchedule(studentId: uid, onlyOpen: true);
+    final openDues = dues.where((d) => d.status != PaymentScheduleStatus.paid).toList();
+    final openDueTotal = openDues.fold<double>(
+      0,
+      (a, d) => a + (d.remainingAmount > 0 ? d.remainingAmount : d.amount),
+    );
+    final payments = await paymentRepo.getPaymentLedger(studentId: uid);
     final lastPayment = payments.isNotEmpty ? payments.first : null;
     final lastLecture = await NotesRepository().getLatestLectureForCurrentStudent();
     var solvedDoubts = 0;
@@ -157,7 +161,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                   title: 'শেষ পেমেন্ট',
                   subtitle: d.lastPayment == null
                       ? 'কোনো পেমেন্ট নেই'
-                      : '${fmt.format(d.lastPayment!.amount)} · ${d.lastPayment!.paidAt != null ? dateFmt.format(d.lastPayment!.paidAt!.toLocal()) : ''}',
+                      : '${fmt.format(d.lastPayment!.amountPaid)} · ${d.lastPayment!.paidAt != null ? dateFmt.format(d.lastPayment!.paidAt!.toLocal()) : ''}',
                   onTap: () => context.push('/student/payments'),
                 ),
                 const SizedBox(height: 10),
@@ -279,7 +283,7 @@ class _DashData {
   final double? attendancePct;
   final int openDuesCount;
   final double openDueTotal;
-  final PaymentModel? lastPayment;
+  final PaymentLedgerModel? lastPayment;
   final String? lastLectureTitle;
   final String? lastLectureChapterId;
   final int solvedDoubtsCount;
