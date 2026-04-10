@@ -132,6 +132,11 @@ class _DashboardBody extends ConsumerWidget {
                 icon: Icons.edit_note,
                 onTap: () => context.push('/admin/exams'),
               ),
+              _QuickChip(
+                label: 'ফলাফল',
+                icon: Icons.leaderboard,
+                onTap: () => context.push('/admin/results'),
+              ),
             ],
           ),
           const SizedBox(height: 24),

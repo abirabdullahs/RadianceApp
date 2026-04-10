@@ -68,6 +68,8 @@ class ResultCalculator {
       var score = 0.0;
       var correct = 0;
       var wrong = 0;
+      var skipped = 0;
+      var negativeDeduction = 0.0;
 
       for (final q in questions) {
         final qid = q['id'] as String;
@@ -77,14 +79,14 @@ class ResultCalculator {
         final chosen = _normalizeOption(answers[qid]);
 
         if (chosen == null || chosen.isEmpty) {
-          wrong++;
-          score -= negativeMarking;
+          skipped++;
         } else if (chosen == correctOpt) {
           correct++;
           score += qMarks;
         } else {
           wrong++;
           score -= negativeMarking;
+          negativeDeduction += negativeMarking;
         }
       }
 
@@ -94,6 +96,7 @@ class ResultCalculator {
         'score': score,
         'total_correct': correct,
         'total_wrong': wrong,
+        'total_skipped': skipped,
       }).eq('id', subId);
 
       final percentage = totalMarksExam > 0
@@ -105,12 +108,20 @@ class ResultCalculator {
       resultPayloads.add(<String, dynamic>{
         'exam_id': examId,
         'student_id': studentId,
+        'exam_type': 'online',
         'score': score,
         'total_marks': totalMarksExam,
         'percentage': double.parse(percentage.toStringAsFixed(2)),
+        'total_correct': correct,
+        'total_wrong': wrong,
+        'total_skipped': skipped,
+        'negative_deduction': double.parse(negativeDeduction.toStringAsFixed(2)),
         'grade': grade,
+        'grade_point': _gradePointFromPercentage(percentage),
         'is_passed': passed,
+        'is_published': true,
         'published_at': nowIso,
+        'created_by': _client.auth.currentUser?.id,
       });
     }
 
@@ -152,6 +163,9 @@ class ResultCalculator {
     required String examId,
     required double totalMarks,
     required List<OfflineResultInput> inputs,
+    double? passMarksOverride,
+    String? remarks,
+    bool publish = true,
   }) async {
     final examRow = await _client
         .from(kTableExams)
@@ -161,7 +175,7 @@ class ResultCalculator {
     if (examRow == null) throw StateError('Exam not found: $examId');
     final exam = Map<String, dynamic>.from(examRow as Map);
     final examTitle = exam['title'] as String? ?? 'পরীক্ষা';
-    final passMarks = _toDouble(exam['pass_marks'], fallback: totalMarks * 0.4);
+    final passMarks = passMarksOverride ?? _toDouble(exam['pass_marks'], fallback: totalMarks * 0.4);
     final nowIso = DateTime.now().toUtc().toIso8601String();
 
     final payload = <Map<String, dynamic>>[];
@@ -172,12 +186,37 @@ class ResultCalculator {
       payload.add(<String, dynamic>{
         'exam_id': examId,
         'student_id': input.studentId,
+        'exam_type': 'offline',
         'score': score,
         'total_marks': totalMarks,
         'percentage': double.parse(percentage.toStringAsFixed(2)),
         'grade': _gradeFromPercentage(percentage),
+        'grade_point': _gradePointFromPercentage(percentage),
         'is_passed': score >= passMarks,
-        'published_at': nowIso,
+        'remarks': remarks,
+        'is_absent': false,
+        'is_published': publish,
+        'published_at': publish ? nowIso : null,
+        'created_by': _client.auth.currentUser?.id,
+      });
+      studentIds.add(input.studentId);
+    }
+    for (final input in inputs.where((e) => e.isAbsent)) {
+      payload.add(<String, dynamic>{
+        'exam_id': examId,
+        'student_id': input.studentId,
+        'exam_type': 'offline',
+        'score': 0,
+        'total_marks': totalMarks,
+        'percentage': 0,
+        'grade': null,
+        'grade_point': null,
+        'is_passed': false,
+        'remarks': remarks,
+        'is_absent': true,
+        'is_published': publish,
+        'published_at': publish ? nowIso : null,
+        'created_by': _client.auth.currentUser?.id,
       });
       studentIds.add(input.studentId);
     }
@@ -185,27 +224,39 @@ class ResultCalculator {
       await _client.from(kTableResults).upsert(payload, onConflict: 'exam_id,student_id');
     }
 
-    await _client.rpc<void>(
-      'calculate_exam_ranks',
-      params: <String, dynamic>{'p_exam_id': examId},
-    );
-    await _client.from(kTableExams).update(<String, dynamic>{
-      'status': 'result_published',
-      'updated_at': nowIso,
-    }).eq('id', examId);
+    if (publish) {
+      await _client.rpc<void>(
+        'calculate_exam_ranks',
+        params: <String, dynamic>{'p_exam_id': examId},
+      );
+      await _client.from(kTableExams).update(<String, dynamic>{
+        'status': 'result_published',
+        'updated_at': nowIso,
+        'total_marks': totalMarks,
+        'pass_marks': passMarks,
+      }).eq('id', examId);
+    } else {
+      await _client.from(kTableExams).update(<String, dynamic>{
+        'updated_at': nowIso,
+        'total_marks': totalMarks,
+        'pass_marks': passMarks,
+      }).eq('id', examId);
+    }
 
-    await _queueResultNotifications(
-      examId: examId,
-      examTitle: examTitle,
-      studentIds: studentIds,
-    );
-    await NotificationEdgeService().invokeSendNotification(
-      userIds: studentIds.toSet().toList(),
-      title: 'ফলাফল প্রকাশিত',
-      body: '$examTitle — রেজাল্ট ও লিডারবোর্ড দেখতে ট্যাপ করুন।',
-      actionRoute: '/student/results',
-      type: 'result',
-    );
+    if (publish) {
+      await _queueResultNotifications(
+        examId: examId,
+        examTitle: examTitle,
+        studentIds: studentIds,
+      );
+      await NotificationEdgeService().invokeSendNotification(
+        userIds: studentIds.toSet().toList(),
+        title: 'ফলাফল প্রকাশিত',
+        body: '$examTitle — রেজাল্ট ও লিডারবোর্ড দেখতে ট্যাপ করুন।',
+        actionRoute: '/student/results',
+        type: 'result',
+      );
+    }
   }
 
   Future<void> _queueResultNotifications({
@@ -248,21 +299,34 @@ class ResultCalculator {
 
   /// Simple percentage → letter (tune to institutional policy if needed).
   static String _gradeFromPercentage(double percentage) {
-    if (percentage >= 80) return 'A+';
-    if (percentage >= 70) return 'A';
+    if (percentage >= 90) return 'A+';
+    if (percentage >= 80) return 'A';
+    if (percentage >= 70) return 'A-';
     if (percentage >= 60) return 'B';
     if (percentage >= 50) return 'C';
     if (percentage >= 40) return 'D';
     return 'F';
+  }
+
+  static double _gradePointFromPercentage(double percentage) {
+    if (percentage >= 90) return 5.0;
+    if (percentage >= 80) return 4.0;
+    if (percentage >= 70) return 3.5;
+    if (percentage >= 60) return 3.0;
+    if (percentage >= 50) return 2.0;
+    if (percentage >= 40) return 1.0;
+    return 0.0;
   }
 }
 
 class OfflineResultInput {
   const OfflineResultInput({
     required this.studentId,
-    required this.obtainedMarks,
+    this.obtainedMarks = 0,
+    this.isAbsent = false,
   });
 
   final String studentId;
   final double obtainedMarks;
+  final bool isAbsent;
 }

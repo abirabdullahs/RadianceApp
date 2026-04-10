@@ -90,6 +90,14 @@ class AdminDrawer extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.leaderboard),
+            title: Text('ফলাফল', style: GoogleFonts.hindSiliguri()),
+            onTap: () {
+              Navigator.pop(context);
+              context.go('/admin/results');
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.psychology_outlined),
             title: Text('প্রশ্নব্যাংক', style: GoogleFonts.hindSiliguri()),
             onTap: () {

@@ -4,11 +4,14 @@ import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'dart:convert';
 import 'dart:io';
 
 import '../../../../app/theme.dart';
+import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/chapter_model.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/exam_model.dart';
@@ -172,6 +175,15 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
                 ActionChip(
                   label: Text('JSON রেজাল্ট আপলোড', style: GoogleFonts.hindSiliguri()),
                   onPressed: () => _importOfflineResultsFromJson(context, e),
+                ),
+              ActionChip(
+                label: Text('Leaderboard', style: GoogleFonts.hindSiliguri()),
+                onPressed: () => _openLeaderboard(context, e),
+              ),
+              if (e.examMode == 'online')
+                ActionChip(
+                  label: Text('Live Monitor', style: GoogleFonts.hindSiliguri()),
+                  onPressed: () => _openLiveMonitor(context, e),
                 ),
             ],
           ),
@@ -610,10 +622,17 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
           ? exam.totalMarks!.toStringAsFixed(0)
           : '',
     );
+    final passCtl = TextEditingController(
+      text: (exam.passMarks != null && exam.passMarks! > 0)
+          ? exam.passMarks!.toStringAsFixed(0)
+          : '',
+    );
+    final remarksCtl = TextEditingController();
     final students = await StudentRepository().getStudents(courseId: exam.courseId);
     final marks = <String, TextEditingController>{
       for (final s in students) s.id: TextEditingController(),
     };
+    final absent = <String, bool>{for (final s in students) s.id: false};
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,
@@ -643,16 +662,48 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
                         style: GoogleFonts.hindSiliguri(fontSize: 14),
                       ),
                       trailing: SizedBox(
-                        width: 90,
-                        child: TextField(
-                          controller: marks[s.id],
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(hintText: 'Mark'),
+                        width: 220,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: marks[s.id],
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(hintText: 'Mark'),
+                                enabled: !(absent[s.id] ?? false),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            StatefulBuilder(
+                              builder: (ctx2, set2) => Checkbox(
+                                value: absent[s.id] ?? false,
+                                onChanged: (v) {
+                                  absent[s.id] = v ?? false;
+                                  if (absent[s.id] == true) {
+                                    marks[s.id]!.clear();
+                                  }
+                                  set2(() {});
+                                },
+                              ),
+                            ),
+                            Text('ABS', style: GoogleFonts.nunito(fontSize: 11)),
+                          ],
                         ),
                       ),
                     );
                   },
                 ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passCtl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Pass Marks'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: remarksCtl,
+                decoration: const InputDecoration(labelText: 'Remarks (optional)'),
               ),
             ],
           ),
@@ -664,12 +715,17 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
             label: Text('JSON টেমপ্লেট', style: GoogleFonts.hindSiliguri()),
           ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
-          FilledButton(
+          OutlinedButton(
             onPressed: () async {
               final total = double.tryParse(totalCtl.text.trim());
               if (total == null || total <= 0) return;
+              final passMarks = double.tryParse(passCtl.text.trim());
               final inputs = <OfflineResultInput>[];
               for (final s in students) {
+                if (absent[s.id] ?? false) {
+                  inputs.add(OfflineResultInput(studentId: s.id, isAbsent: true));
+                  continue;
+                }
                 final raw = marks[s.id]!.text.trim();
                 if (raw.isEmpty) continue;
                 final score = double.tryParse(raw);
@@ -679,6 +735,45 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
               await ResultCalculator().publishOfflineResults(
                 examId: exam.id,
                 totalMarks: total,
+                passMarksOverride: passMarks,
+                remarks: remarksCtl.text.trim().isEmpty ? null : remarksCtl.text.trim(),
+                publish: false,
+                inputs: inputs,
+              );
+              if (ctx.mounted) Navigator.pop(ctx);
+              widget.onRefresh();
+              if (mounted) {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('রেজাল্ট সেভ হয়েছে', style: GoogleFonts.hindSiliguri())),
+                );
+              }
+            },
+            child: Text('Save', style: GoogleFonts.hindSiliguri()),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final total = double.tryParse(totalCtl.text.trim());
+              if (total == null || total <= 0) return;
+              final passMarks = double.tryParse(passCtl.text.trim());
+              final inputs = <OfflineResultInput>[];
+              for (final s in students) {
+                if (absent[s.id] ?? false) {
+                  inputs.add(OfflineResultInput(studentId: s.id, isAbsent: true));
+                  continue;
+                }
+                final raw = marks[s.id]!.text.trim();
+                if (raw.isEmpty) continue;
+                final score = double.tryParse(raw);
+                if (score == null) continue;
+                inputs.add(OfflineResultInput(studentId: s.id, obtainedMarks: score));
+              }
+              await ResultCalculator().publishOfflineResults(
+                examId: exam.id,
+                totalMarks: total,
+                passMarksOverride: passMarks,
+                remarks: remarksCtl.text.trim().isEmpty ? null : remarksCtl.text.trim(),
+                publish: true,
                 inputs: inputs,
               );
               if (ctx.mounted) Navigator.pop(ctx);
@@ -696,6 +791,8 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
       ),
     );
     totalCtl.dispose();
+    passCtl.dispose();
+    remarksCtl.dispose();
     for (final c in marks.values) {
       c.dispose();
     }
@@ -705,9 +802,12 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
     try {
       const sample = {
         'totalMarks': 100,
+        'passMarks': 40,
+        'remarks': 'Overall feedback',
         'results': [
           {'student_id': 'RCC123456789', 'obtained': 78},
           {'student_id': 'RCC987654321', 'obtained': 65.5},
+          {'student_id': 'RCC111222333', 'absent': true},
         ],
       };
       final path = await FilePicker.saveFile(
@@ -745,6 +845,9 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
       }
       final total = (decoded['totalMarks'] as num?)?.toDouble() ??
           double.tryParse(decoded['totalMarks']?.toString() ?? '');
+      final passMarks = (decoded['passMarks'] as num?)?.toDouble() ??
+          double.tryParse(decoded['passMarks']?.toString() ?? '');
+      final remarks = decoded['remarks']?.toString();
       if (total == null || total <= 0) throw Exception('totalMarks required');
       final rows = decoded['results'];
       if (rows is! List) throw Exception('results list required');
@@ -759,16 +862,26 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
         final m = Map<String, dynamic>.from(raw as Map);
         final sidRaw = (m['student_id'] ?? m['studentId'] ?? '').toString();
         final sid = sidRaw.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+        final isAbsent = m['absent'] == true;
         final score = (m['obtained'] as num?)?.toDouble() ??
             double.tryParse((m['obtained'] ?? '').toString());
-        if (sid.isEmpty || score == null) continue;
+        if (sid.isEmpty || (!isAbsent && score == null)) continue;
         final student = byStudentId[sid];
         if (student == null) continue;
-        inputs.add(OfflineResultInput(studentId: student.id, obtainedMarks: score));
+        inputs.add(
+          OfflineResultInput(
+            studentId: student.id,
+            obtainedMarks: score ?? 0,
+            isAbsent: isAbsent,
+          ),
+        );
       }
       await ResultCalculator().publishOfflineResults(
         examId: exam.id,
         totalMarks: total,
+        passMarksOverride: passMarks,
+        remarks: remarks,
+        publish: true,
         inputs: inputs,
       );
       widget.onRefresh();
@@ -815,6 +928,148 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
     );
     if (t == null) return null;
     return DateTime(d.year, d.month, d.day, t.hour, t.minute);
+  }
+
+  Future<void> _openLeaderboard(BuildContext context, ExamModel exam) async {
+    final rows = await supabaseClient
+        .from('results')
+        .select('student_id,score,total_marks,percentage,grade,rank,is_absent,users(full_name_bn,student_id)')
+        .eq('exam_id', exam.id)
+        .eq('is_published', true)
+        .order('rank', ascending: true);
+    final list = (rows as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.85,
+          child: Column(
+            children: [
+              ListTile(
+                title: Text('Leaderboard', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                subtitle: Text(exam.title, style: GoogleFonts.hindSiliguri()),
+                trailing: IconButton(
+                  onPressed: () => _exportLeaderboardPdf(exam.title, list),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (_, i) {
+                    final row = list[i];
+                    final user = Map<String, dynamic>.from(row['users'] as Map? ?? const {});
+                    final absent = row['is_absent'] == true;
+                    return ListTile(
+                      leading: CircleAvatar(child: Text('${row['rank'] ?? '-'}')),
+                      title: Text('${user['full_name_bn'] ?? 'Student'}', style: GoogleFonts.hindSiliguri()),
+                      subtitle: Text(
+                        absent
+                            ? 'Absent'
+                            : '${row['score']} / ${row['total_marks']} · ${row['grade'] ?? '-'}',
+                        style: GoogleFonts.nunito(fontSize: 12),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openLiveMonitor(BuildContext context, ExamModel exam) async {
+    final rows = await supabaseClient
+        .from('exam_submissions')
+        .select('student_id,submitted_at,users(full_name_bn)')
+        .eq('exam_id', exam.id);
+    final list = (rows as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    var submitted = 0;
+    for (final r in list) {
+      if (r['submitted_at'] != null) submitted++;
+    }
+    if (!context.mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Live Monitor', style: GoogleFonts.hindSiliguri()),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Started: ${list.length}', style: GoogleFonts.nunito()),
+              Text('Submitted: $submitted', style: GoogleFonts.nunito()),
+              Text('Running: ${list.length - submitted}', style: GoogleFonts.nunito()),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 280,
+                child: ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (_, i) {
+                    final row = list[i];
+                    final user = Map<String, dynamic>.from(row['users'] as Map? ?? const {});
+                    final done = row['submitted_at'] != null;
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(done ? Icons.check_circle : Icons.timelapse, size: 18),
+                      title: Text(user['full_name_bn']?.toString() ?? 'Student', style: GoogleFonts.hindSiliguri(fontSize: 13)),
+                      subtitle: Text(done ? 'Submitted' : 'In progress', style: GoogleFonts.nunito(fontSize: 11)),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ExamRepository().setExamStatus(exam.id, 'ended');
+              if (ctx.mounted) Navigator.pop(ctx);
+              widget.onRefresh();
+            },
+            child: const Text('Force End'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportLeaderboardPdf(
+    String title,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(level: 0, child: pw.Text('Merit List: $title')),
+          pw.Table.fromTextArray(
+            headers: const ['Rank', 'Student', 'Score', 'Grade'],
+            data: rows.map((row) {
+              final user = Map<String, dynamic>.from(row['users'] as Map? ?? const {});
+              return [
+                '${row['rank'] ?? '-'}',
+                '${user['full_name_bn'] ?? 'Student'}',
+                row['is_absent'] == true ? 'Absent' : '${row['score']}/${row['total_marks']}',
+                row['is_absent'] == true ? '-' : '${row['grade'] ?? '-'}',
+              ];
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+    await Printing.layoutPdf(onLayout: (_) => doc.save());
   }
 }
 

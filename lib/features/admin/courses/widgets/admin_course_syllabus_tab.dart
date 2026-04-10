@@ -1,8 +1,8 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/theme.dart';
@@ -12,7 +12,6 @@ import '../../../../shared/models/note_model.dart';
 import '../../../../shared/models/subject_model.dart';
 import '../repositories/course_repository.dart';
 
-/// Subjects → chapters → lectures ([notes] type `lecture`) + per-chapter [suggestions].
 class AdminCourseSyllabusTab extends StatefulWidget {
   const AdminCourseSyllabusTab({super.key, required this.courseId});
 
@@ -29,6 +28,7 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
   final Map<String, List<ChapterModel>> _chapters = {};
   final Map<String, List<NoteModel>> _notes = {};
   final Map<String, List<ChapterSuggestionModel>> _suggestions = {};
+  int _storageUsageBytes = 0;
 
   @override
   void initState() {
@@ -42,64 +42,43 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
     _notes.clear();
     _suggestions.clear();
     for (final s in subjects) {
-      final ch = await _repo.getChapters(s.id);
-      _chapters[s.id] = ch;
-      for (final c in ch) {
-        final notes = await _repo.getNotesForChapter(c.id);
-        _notes[c.id] = notes;
-        final sug = await _repo.getSuggestionsForChapter(c.id);
-        _suggestions[c.id] = sug;
+      final chapters = await _repo.getChapters(s.id);
+      _chapters[s.id] = chapters;
+      for (final c in chapters) {
+        _notes[c.id] = await _repo.getNotesForChapter(c.id);
+        _suggestions[c.id] = await _repo.getSuggestionsForChapter(c.id);
       }
     }
-    if (mounted) {
-      setState(() {
-        _subjects = subjects;
-      });
-    }
+    _storageUsageBytes = await _repo.estimateNoteStorageBytes();
+    if (!mounted) return;
+    setState(() => _subjects = subjects);
   }
 
   Future<void> _refresh() async {
-    setState(() {
-      _reload = _load();
-    });
+    setState(() => _reload = _load());
     await _reload;
   }
 
   Future<void> _addSubject() async {
-    final name = TextEditingController();
-    final desc = TextEditingController();
+    final ctl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('নতুন সাবজেক্ট', style: GoogleFonts.hindSiliguri()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(labelText: 'নাম *'),
-            ),
-            TextField(
-              controller: desc,
-              decoration: const InputDecoration(labelText: 'বিবরণ'),
-              maxLines: 2,
-            ),
-          ],
-        ),
+        title: Text('সাবজেক্ট যোগ করুন', style: GoogleFonts.hindSiliguri()),
+        content: TextField(controller: ctl, decoration: const InputDecoration(labelText: 'নাম *')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('যোগ')),
         ],
       ),
     );
-    if (ok != true || !mounted) return;
-    if (name.text.trim().isEmpty) return;
+    if (ok != true || ctl.text.trim().isEmpty) return;
     await _repo.addSubject(
       SubjectModel(
         id: '',
         courseId: widget.courseId,
-        name: name.text.trim(),
-        description: desc.text.trim().isEmpty ? null : desc.text.trim(),
+        name: ctl.text.trim(),
+        description: null,
         displayOrder: _subjects.length,
         isActive: true,
       ),
@@ -108,129 +87,111 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
   }
 
   Future<void> _addChapter(SubjectModel subject) async {
-    final name = TextEditingController();
+    final ctl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('নতুন অধ্যায়', style: GoogleFonts.hindSiliguri()),
-        content: TextField(
-          controller: name,
-          decoration: const InputDecoration(labelText: 'অধ্যায়ের নাম *'),
-        ),
+        title: Text('অধ্যায় যোগ করুন', style: GoogleFonts.hindSiliguri()),
+        content: TextField(controller: ctl, decoration: const InputDecoration(labelText: 'নাম *')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('যোগ')),
         ],
       ),
     );
-    if (ok != true || !mounted) return;
-    if (name.text.trim().isEmpty) return;
-    final list = _chapters[subject.id] ?? [];
+    if (ok != true || ctl.text.trim().isEmpty) return;
+    final count = (_chapters[subject.id] ?? []).length;
     await _repo.addChapter(
       ChapterModel(
         id: '',
         subjectId: subject.id,
-        name: name.text.trim(),
+        name: ctl.text.trim(),
         description: null,
-        displayOrder: list.length,
+        displayOrder: count,
         isActive: true,
       ),
     );
     await _refresh();
   }
 
-  Future<void> _addLecture(String chapterId) async {
-    final title = TextEditingController();
-    final content = TextEditingController();
-    final video = TextEditingController();
+  Future<void> _addNoteDialog(String chapterId, {bool forceLecture = false}) async {
+    final titleCtl = TextEditingController();
+    final textCtl = TextEditingController();
+    final youtubeCtl = TextEditingController();
+    final externalCtl = TextEditingController();
+    var type = forceLecture ? 'lecture' : 'pdf';
     var published = true;
+    File? pickedFile;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text('নতুন লেকচার', style: GoogleFonts.hindSiliguri()),
+          title: Text('নোট যোগ করুন', style: GoogleFonts.hindSiliguri()),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: title,
-                  decoration: const InputDecoration(labelText: 'শিরোনাম *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: content,
-                  decoration: const InputDecoration(
-                    labelText: 'মার্কডাউন + LaTeX',
-                    hintText: r'উদাহরণ: $x^2$ বা $$\int_0^1 x\,dx$$',
-                    alignLabelWithHint: true,
+                if (!forceLecture)
+                  DropdownButtonFormField<String>(
+                    value: type,
+                    decoration: const InputDecoration(labelText: 'নোট টাইপ'),
+                    items: const [
+                      DropdownMenuItem(value: 'pdf', child: Text('PDF')),
+                      DropdownMenuItem(value: 'video_youtube', child: Text('YouTube')),
+                      DropdownMenuItem(value: 'video_upload', child: Text('ভিডিও ফাইল')),
+                      DropdownMenuItem(value: 'text', child: Text('টেক্সট')),
+                      DropdownMenuItem(value: 'image', child: Text('ইমেজ')),
+                      DropdownMenuItem(value: 'link', child: Text('লিংক')),
+                      DropdownMenuItem(value: 'lecture', child: Text('লেকচার')),
+                    ],
+                    onChanged: (v) => setLocal(() => type = v ?? 'pdf'),
                   ),
-                  maxLines: 8,
-                  onChanged: (_) => setLocal(() {}),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'লাইভ প্রিভিউ',
-                  style: GoogleFonts.hindSiliguri(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(ctx).colorScheme.primary,
+                const SizedBox(height: 10),
+                TextField(controller: titleCtl, decoration: const InputDecoration(labelText: 'শিরোনাম *')),
+                if (type == 'text' || type == 'lecture') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: textCtl,
+                    maxLines: 6,
+                    decoration: const InputDecoration(labelText: 'Markdown + LaTeX'),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 240),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
-                    color: Theme.of(ctx).colorScheme.surfaceContainerLowest,
+                ],
+                if (type == 'video_youtube' || type == 'lecture') ...[
+                  const SizedBox(height: 10),
+                  TextField(controller: youtubeCtl, decoration: const InputDecoration(labelText: 'YouTube URL')),
+                ],
+                if (type == 'link') ...[
+                  const SizedBox(height: 10),
+                  TextField(controller: externalCtl, decoration: const InputDecoration(labelText: 'External URL')),
+                ],
+                if (type == 'pdf' || type == 'video_upload' || type == 'image') ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final ext = type == 'pdf'
+                          ? <String>['pdf']
+                          : type == 'image'
+                              ? <String>['jpg', 'jpeg', 'png', 'webp']
+                              : <String>['mp4', 'mov', 'mkv', 'avi'];
+                      final picked = await FilePicker.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ext,
+                      );
+                      if (picked == null || picked.files.single.path == null) return;
+                      setLocal(() => pickedFile = File(picked.files.single.path!));
+                    },
+                    icon: const Icon(Icons.upload_file),
+                    label: Text(
+                      pickedFile == null ? 'ফাইল নির্বাচন' : pickedFile!.path.split('\\').last,
+                      style: GoogleFonts.hindSiliguri(),
+                    ),
                   ),
-                  child: content.text.trim().isEmpty
-                      ? Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'মার্কডাউন লিখলে এখানে প্রিভিউ দেখাবে।',
-                            style: GoogleFonts.hindSiliguri(
-                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          child: MarkdownBody(
-                            data: _safePreviewMarkdown(content.text),
-                            selectable: true,
-                            styleSheet: _lecturePreviewStyle(ctx),
-                            extensionSet: md.ExtensionSet(
-                              md.ExtensionSet.gitHubFlavored.blockSyntaxes,
-                              <md.InlineSyntax>[LatexInlineSyntax()],
-                            ),
-                            blockSyntaxes: <md.BlockSyntax>[LatexBlockSyntax()],
-                            builders: <String, MarkdownElementBuilder>{
-                              'latex': LatexElementBuilder(),
-                            },
-                            onTapLink: (text, href, title) async {
-                              if (href == null || href.isEmpty) return;
-                              final u = Uri.tryParse(href);
-                              if (u != null && await canLaunchUrl(u)) {
-                                await launchUrl(u, mode: LaunchMode.externalApplication);
-                              }
-                            },
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: video,
-                  decoration: const InputDecoration(
-                    labelText: 'ভিডিও লিংক (ঐচ্ছিক)',
-                    hintText: 'YouTube বা অন্য URL',
-                  ),
-                ),
+                ],
                 SwitchListTile(
-                  title: Text('প্রকাশিত', style: GoogleFonts.hindSiliguri(fontSize: 14)),
+                  contentPadding: EdgeInsets.zero,
                   value: published,
+                  title: Text('এখনই publish', style: GoogleFonts.hindSiliguri(fontSize: 14)),
                   onChanged: (v) => setLocal(() => published = v),
                 ),
               ],
@@ -243,18 +204,27 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
         ),
       ),
     );
-    if (ok != true || !mounted) return;
-    if (title.text.trim().isEmpty) return;
+    if (ok != true || titleCtl.text.trim().isEmpty) return;
+
+    String? fileUrl;
+    int? fileSizeKb;
+    if (pickedFile != null) {
+      fileUrl = await _repo.uploadNoteFile(file: pickedFile!, chapterId: chapterId, kind: type);
+      fileSizeKb = (await pickedFile!.length() / 1024).round();
+    }
     final order = await _repo.nextNoteDisplayOrder(chapterId);
     await _repo.addNote(
       NoteModel(
         id: '',
         chapterId: chapterId,
-        title: title.text.trim(),
-        description: null,
-        type: 'lecture',
-        fileUrl: video.text.trim().isEmpty ? null : video.text.trim(),
-        content: content.text.trim().isEmpty ? null : content.text.trim(),
+        title: titleCtl.text.trim(),
+        type: type,
+        fileUrl: fileUrl ?? (youtubeCtl.text.trim().isEmpty ? null : youtubeCtl.text.trim()),
+        youtubeUrl: youtubeCtl.text.trim().isEmpty ? null : youtubeCtl.text.trim(),
+        externalUrl: externalCtl.text.trim().isEmpty ? null : externalCtl.text.trim(),
+        textContent: textCtl.text.trim().isEmpty ? null : textCtl.text.trim(),
+        content: textCtl.text.trim().isEmpty ? null : textCtl.text.trim(),
+        fileSizeKb: fileSizeKb,
         isPublished: published,
         displayOrder: order,
       ),
@@ -262,96 +232,66 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
     await _refresh();
   }
 
-  Future<void> _editLecture(NoteModel note) async {
-    final title = TextEditingController(text: note.title);
-    final content = TextEditingController(text: note.content ?? '');
-    final video = TextEditingController(text: note.fileUrl ?? '');
+  Future<void> _bulkPdfUpload(String chapterId) async {
+    final picked = await FilePicker.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    var publish = true;
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('Bulk PDF', style: GoogleFonts.hindSiliguri()),
+          content: SwitchListTile(
+            value: publish,
+            title: Text('সব publish করুন', style: GoogleFonts.hindSiliguri()),
+            onChanged: (v) => setLocal(() => publish = v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('আপলোড')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final files = picked.files.where((e) => e.path != null).map((e) => File(e.path!)).toList();
+    await _repo.addBulkPdfNotes(chapterId: chapterId, files: files, publish: publish);
+    await _refresh();
+  }
+
+  Future<void> _editNote(NoteModel note) async {
+    final titleCtl = TextEditingController(text: note.title);
+    final descCtl = TextEditingController(text: note.description ?? '');
+    final textCtl = TextEditingController(text: note.textContent ?? note.content ?? '');
+    final linkCtl = TextEditingController(text: note.externalUrl ?? note.youtubeUrl ?? note.fileUrl ?? '');
     var published = note.isPublished ?? true;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text('লেকচার সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+          title: Text('নোট সম্পাদনা', style: GoogleFonts.hindSiliguri()),
           content: SingleChildScrollView(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: title,
-                  decoration: const InputDecoration(labelText: 'শিরোনাম *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: content,
-                  decoration: const InputDecoration(
-                    labelText: 'মার্কডাউন + LaTeX',
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: 8,
-                  onChanged: (_) => setLocal(() {}),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'লাইভ প্রিভিউ',
-                  style: GoogleFonts.hindSiliguri(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(ctx).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 240),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
-                    color: Theme.of(ctx).colorScheme.surfaceContainerLowest,
-                  ),
-                  child: content.text.trim().isEmpty
-                      ? Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'মার্কডাউন লিখলে এখানে প্রিভিউ দেখাবে।',
-                            style: GoogleFonts.hindSiliguri(
-                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          child: MarkdownBody(
-                            data: _safePreviewMarkdown(content.text),
-                            selectable: true,
-                            styleSheet: _lecturePreviewStyle(ctx),
-                            extensionSet: md.ExtensionSet(
-                              md.ExtensionSet.gitHubFlavored.blockSyntaxes,
-                              <md.InlineSyntax>[LatexInlineSyntax()],
-                            ),
-                            blockSyntaxes: <md.BlockSyntax>[LatexBlockSyntax()],
-                            builders: <String, MarkdownElementBuilder>{
-                              'latex': LatexElementBuilder(),
-                            },
-                            onTapLink: (text, href, title) async {
-                              if (href == null || href.isEmpty) return;
-                              final u = Uri.tryParse(href);
-                              if (u != null && await canLaunchUrl(u)) {
-                                await launchUrl(u, mode: LaunchMode.externalApplication);
-                              }
-                            },
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: video,
-                  decoration: const InputDecoration(
-                    labelText: 'ভিডিও লিংক (ঐচ্ছিক)',
-                  ),
-                ),
+                TextField(controller: titleCtl, decoration: const InputDecoration(labelText: 'শিরোনাম')),
+                const SizedBox(height: 10),
+                TextField(controller: descCtl, decoration: const InputDecoration(labelText: 'বিবরণ')),
+                if (note.type == 'text' || note.type == 'lecture') ...[
+                  const SizedBox(height: 10),
+                  TextField(controller: textCtl, maxLines: 6, decoration: const InputDecoration(labelText: 'কনটেন্ট')),
+                ],
+                if (note.type == 'link' || note.type == 'video_youtube' || note.type == 'lecture') ...[
+                  const SizedBox(height: 10),
+                  TextField(controller: linkCtl, decoration: const InputDecoration(labelText: 'URL')),
+                ],
                 SwitchListTile(
-                  title: Text('প্রকাশিত', style: GoogleFonts.hindSiliguri(fontSize: 14)),
                   value: published,
+                  title: Text('Publish', style: GoogleFonts.hindSiliguri(fontSize: 14)),
                   onChanged: (v) => setLocal(() => published = v),
                 ),
               ],
@@ -364,82 +304,40 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
         ),
       ),
     );
-    if (ok != true || !mounted) return;
-    if (title.text.trim().isEmpty) return;
+    if (ok != true) return;
     await _repo.updateNote(
       note.copyWith(
-        title: title.text.trim(),
-        content: content.text.trim().isEmpty ? null : content.text.trim(),
-        fileUrl: video.text.trim().isEmpty ? null : video.text.trim(),
+        title: titleCtl.text.trim(),
+        description: descCtl.text.trim().isEmpty ? null : descCtl.text.trim(),
+        content: textCtl.text.trim().isEmpty ? null : textCtl.text.trim(),
+        textContent: textCtl.text.trim().isEmpty ? null : textCtl.text.trim(),
+        externalUrl: note.type == 'link' ? (linkCtl.text.trim().isEmpty ? null : linkCtl.text.trim()) : note.externalUrl,
+        youtubeUrl: (note.type == 'video_youtube' || note.type == 'lecture')
+            ? (linkCtl.text.trim().isEmpty ? null : linkCtl.text.trim())
+            : note.youtubeUrl,
+        fileUrl: (note.type == 'video_youtube' || note.type == 'lecture')
+            ? (linkCtl.text.trim().isEmpty ? null : linkCtl.text.trim())
+            : note.fileUrl,
         isPublished: published,
       ),
     );
     await _refresh();
   }
 
-  MarkdownStyleSheet _lecturePreviewStyle(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final base = MarkdownStyleSheet.fromTheme(Theme.of(context));
-    return base.copyWith(
-      p: GoogleFonts.hindSiliguri(fontSize: 14, height: 1.5, color: scheme.onSurface),
-      h1: GoogleFonts.hindSiliguri(fontSize: 20, fontWeight: FontWeight.w700),
-      h2: GoogleFonts.hindSiliguri(fontSize: 18, fontWeight: FontWeight.w700),
-      h3: GoogleFonts.hindSiliguri(fontSize: 16, fontWeight: FontWeight.w700),
-      listBullet: GoogleFonts.hindSiliguri(fontSize: 14, color: scheme.onSurface),
-      code: GoogleFonts.nunito(fontSize: 12, color: scheme.primary),
-      blockquote: GoogleFonts.hindSiliguri(
-        fontSize: 13,
-        fontStyle: FontStyle.italic,
-        color: scheme.onSurfaceVariant,
-      ),
-      a: GoogleFonts.hindSiliguri(
-        fontSize: 14,
-        color: scheme.primary,
-        decoration: TextDecoration.underline,
-      ),
-    );
-  }
-
-  String _safePreviewMarkdown(String source) {
-    const max = 8000;
-    if (source.length <= max) return source;
-    return '${source.substring(0, max)}\n\n---\nPreview truncated for performance...';
-  }
-
   Future<void> _addSuggestion(String chapterId) async {
     final title = TextEditingController();
     final content = TextEditingController();
-    final pdf = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('চ্যাপ্টার সাজেশন', style: GoogleFonts.hindSiliguri()),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: title,
-                decoration: const InputDecoration(labelText: 'শিরোনাম *'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: content,
-                decoration: const InputDecoration(
-                  labelText: 'মার্কডাউন',
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 6,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: pdf,
-                decoration: const InputDecoration(
-                  labelText: 'PDF লিংক (ঐচ্ছিক)',
-                ),
-              ),
-            ],
-          ),
+        title: Text('সাজেশন যোগ', style: GoogleFonts.hindSiliguri()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: title, decoration: const InputDecoration(labelText: 'শিরোনাম *')),
+            const SizedBox(height: 10),
+            TextField(controller: content, maxLines: 4, decoration: const InputDecoration(labelText: 'কনটেন্ট')),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
@@ -447,23 +345,21 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
         ],
       ),
     );
-    if (ok != true || !mounted) return;
-    if (title.text.trim().isEmpty) return;
+    if (ok != true || title.text.trim().isEmpty) return;
     await _repo.addChapterSuggestion(
       courseId: widget.courseId,
       chapterId: chapterId,
       title: title.text.trim(),
       content: content.text.trim().isEmpty ? null : content.text.trim(),
-      pdfUrl: pdf.text.trim().isEmpty ? null : pdf.text.trim(),
     );
     await _refresh();
   }
 
   Future<void> _openUrl(String? url) async {
     if (url == null || url.isEmpty) return;
-    final u = Uri.tryParse(url);
-    if (u != null && await canLaunchUrl(u)) {
-      await launchUrl(u, mode: LaunchMode.externalApplication);
+    final uri = Uri.tryParse(url);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -480,25 +376,28 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              FilledButton.icon(
-                onPressed: _addSubject,
-                icon: const Icon(Icons.add),
-                label: Text('সাবজেক্ট যোগ করুন', style: GoogleFonts.hindSiliguri()),
-                style: FilledButton.styleFrom(backgroundColor: context.themePrimary),
-              ),
-              const SizedBox(height: 16),
-              if (_subjects.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'কোনো সাবজেক্ট নেই। উপরের বাটনে যোগ করুন।',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.hindSiliguri(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _addSubject,
+                      icon: const Icon(Icons.add),
+                      label: Text('সাবজেক্ট যোগ করুন', style: GoogleFonts.hindSiliguri()),
+                      style: FilledButton.styleFrom(backgroundColor: context.themePrimary),
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.storage_outlined),
+                  title: Text('স্টোরেজ ব্যবহৃত', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                  subtitle: Text('${(_storageUsageBytes / (1024 * 1024)).toStringAsFixed(2)} MB', style: GoogleFonts.nunito()),
                 ),
-              ..._subjects.map((s) => _subjectCard(s)),
+              ),
+              const SizedBox(height: 8),
+              ..._subjects.map(_subjectCard),
             ],
           ),
         );
@@ -506,10 +405,10 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
     );
   }
 
-  Widget _subjectCard(SubjectModel s) {
-    final chapters = _chapters[s.id] ?? [];
+  Widget _subjectCard(SubjectModel subject) {
+    final chapters = _chapters[subject.id] ?? [];
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -519,41 +418,13 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
               children: [
                 Expanded(
                   child: Text(
-                    s.name,
-                    style: GoogleFonts.hindSiliguri(fontSize: 18, fontWeight: FontWeight.w700),
+                    subject.name,
+                    style: GoogleFonts.hindSiliguri(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.playlist_add, color: context.themePrimary),
-                  tooltip: 'অধ্যায়',
-                  onPressed: () => _addChapter(s),
-                ),
-                IconButton(
-                  icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-                  onPressed: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: Text('মুছবেন?', style: GoogleFonts.hindSiliguri()),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('না')),
-                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('হ্যাঁ')),
-                        ],
-                      ),
-                    );
-                    if (ok == true && mounted) {
-                      await _repo.deleteSubject(s.id);
-                      await _refresh();
-                    }
-                  },
-                ),
+                IconButton(onPressed: () => _addChapter(subject), icon: const Icon(Icons.playlist_add)),
               ],
             ),
-            if (s.description != null && s.description!.isNotEmpty)
-              Text(s.description!, style: GoogleFonts.hindSiliguri(fontSize: 13)),
-            const SizedBox(height: 8),
-            if (chapters.isEmpty)
-              Text('কোনো অধ্যায় নেই', style: GoogleFonts.hindSiliguri(color: Theme.of(context).colorScheme.outline)),
             ...chapters.map(_chapterTile),
           ],
         ),
@@ -561,63 +432,56 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
     );
   }
 
-  Widget _chapterTile(ChapterModel ch) {
-    final notes = _notes[ch.id] ?? [];
-    final sug = _suggestions[ch.id] ?? [];
+  Widget _chapterTile(ChapterModel chapter) {
+    final notes = _notes[chapter.id] ?? [];
+    final suggestions = _suggestions[chapter.id] ?? [];
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
-      title: Text(ch.name, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-      trailing: IconButton(
-        icon: Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
-        onPressed: () async {
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: Text('অধ্যায় মুছবেন?', style: GoogleFonts.hindSiliguri()),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('না')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('হ্যাঁ')),
-              ],
-            ),
-          );
-          if (ok == true && mounted) {
-            await _repo.deleteChapter(ch.id);
-            await _refresh();
-          }
-        },
-      ),
+      title: Text(chapter.name, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => _addLecture(ch.id),
-            icon: const Icon(Icons.smart_display_outlined, size: 18),
-            label: Text('লেকচার যোগ', style: GoogleFonts.hindSiliguri()),
-          ),
+        Wrap(
+          spacing: 6,
+          children: [
+            TextButton.icon(
+              onPressed: () => _addNoteDialog(chapter.id),
+              icon: const Icon(Icons.note_add_outlined, size: 18),
+              label: Text('নোট যোগ', style: GoogleFonts.hindSiliguri()),
+            ),
+            TextButton.icon(
+              onPressed: () => _addNoteDialog(chapter.id, forceLecture: true),
+              icon: const Icon(Icons.smart_display_outlined, size: 18),
+              label: Text('লেকচার যোগ', style: GoogleFonts.hindSiliguri()),
+            ),
+            TextButton.icon(
+              onPressed: () => _bulkPdfUpload(chapter.id),
+              icon: const Icon(Icons.upload_file_outlined, size: 18),
+              label: Text('Bulk PDF', style: GoogleFonts.hindSiliguri()),
+            ),
+          ],
         ),
         ...notes.map(
           (n) => ListTile(
             dense: true,
             title: Text(n.title, style: GoogleFonts.hindSiliguri(fontSize: 14)),
             subtitle: Text(
-              '${n.type}${n.isPublished == false ? ' · খসড়া' : ''}',
+              '${n.type} · ${n.viewCount ?? 0} views${n.isPublished == false ? ' · draft' : ''}',
               style: GoogleFonts.nunito(fontSize: 11),
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (n.fileUrl != null && n.fileUrl!.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.ondemand_video, size: 20),
-                    onPressed: () => _openUrl(n.fileUrl),
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.open_in_new, size: 20),
+                  onPressed: () => _openUrl(n.externalUrl ?? n.youtubeUrl ?? n.fileUrl),
+                ),
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, size: 20),
-                  onPressed: () => _editLecture(n),
+                  onPressed: () => _editNote(n),
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
                   onPressed: () async {
+                    await _repo.deleteNoteFileByUrl(n.fileUrl);
                     await _repo.deleteNote(n.id);
                     await _refresh();
                   },
@@ -627,40 +491,12 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
           ),
         ),
         const Divider(),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => _addSuggestion(ch.id),
-            icon: const Icon(Icons.lightbulb_outline, size: 18),
-            label: Text('সাজেশন যোগ', style: GoogleFonts.hindSiliguri()),
-          ),
+        TextButton.icon(
+          onPressed: () => _addSuggestion(chapter.id),
+          icon: const Icon(Icons.lightbulb_outline, size: 18),
+          label: Text('সাজেশন যোগ', style: GoogleFonts.hindSiliguri()),
         ),
-        ...sug.map(
-          (g) => ListTile(
-            dense: true,
-            title: Text(g.title, style: GoogleFonts.hindSiliguri(fontSize: 14)),
-            subtitle: g.pdfUrl != null && g.pdfUrl!.isNotEmpty
-                ? Text('PDF', style: GoogleFonts.nunito(fontSize: 11))
-                : null,
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (g.pdfUrl != null && g.pdfUrl!.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                    onPressed: () => _openUrl(g.pdfUrl),
-                  ),
-                IconButton(
-                  icon: Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
-                  onPressed: () async {
-                    await _repo.deleteChapterSuggestion(g.id);
-                    await _refresh();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
+        ...suggestions.map((s) => ListTile(title: Text(s.title, style: GoogleFonts.hindSiliguri(fontSize: 14)))),
       ],
     );
   }

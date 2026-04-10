@@ -7,12 +7,16 @@ class ExamModel {
     this.chapterIds = const [],
     this.examMode = 'online',
     required this.title,
+    this.description,
     this.instructions,
     required this.durationMinutes,
     this.startTime,
     this.endTime,
+    this.examDate,
+    this.venue,
     this.totalMarks,
     this.passMarks,
+    this.marksPerQuestion,
     this.shuffleQuestions = false,
     this.showResultImmediately = true,
     this.negativeMarking = 0,
@@ -28,12 +32,16 @@ class ExamModel {
   final List<String> chapterIds;
   final String examMode;
   final String title;
+  final String? description;
   final String? instructions;
   final int durationMinutes;
   final DateTime? startTime;
   final DateTime? endTime;
+  final DateTime? examDate;
+  final String? venue;
   final double? totalMarks;
   final double? passMarks;
+  final double? marksPerQuestion;
   final bool shuffleQuestions;
   final bool showResultImmediately;
   final double negativeMarking;
@@ -50,12 +58,16 @@ class ExamModel {
       chapterIds: _parseStringList(json['chapter_ids']),
       examMode: (json['exam_mode'] as String?) ?? 'online',
       title: json['title'] as String,
+      description: json['description'] as String?,
       instructions: json['instructions'] as String?,
       durationMinutes: (json['duration_minutes'] as num).toInt(),
       startTime: _parseDt(json['start_time']),
       endTime: _parseDt(json['end_time']),
+      examDate: _parseDt(json['exam_date']),
+      venue: json['venue'] as String?,
       totalMarks: _parseDouble(json['total_marks']),
       passMarks: _parseDouble(json['pass_marks']),
+      marksPerQuestion: _parseDouble(json['marks_per_question']),
       shuffleQuestions: json['shuffle_questions'] as bool? ?? false,
       showResultImmediately: json['show_result_immediately'] as bool? ?? true,
       negativeMarking: _parseDouble(json['negative_marking']) ?? 0,
@@ -74,12 +86,16 @@ class ExamModel {
       'chapter_ids': chapterIds,
       'exam_mode': examMode,
       'title': title,
+      'description': description,
       'instructions': instructions,
       'duration_minutes': durationMinutes,
       'start_time': startTime?.toUtc().toIso8601String(),
       'end_time': endTime?.toUtc().toIso8601String(),
+      'exam_date': examDate?.toUtc().toIso8601String(),
+      'venue': venue,
       'total_marks': totalMarks,
       'pass_marks': passMarks,
+      'marks_per_question': marksPerQuestion,
       'shuffle_questions': shuffleQuestions,
       'show_result_immediately': showResultImmediately,
       'negative_marking': negativeMarking,

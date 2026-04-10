@@ -60,6 +60,24 @@ class StudentExamsScreen extends ConsumerWidget {
                             '${e.examMode.toUpperCase()} · ${e.status}',
                             style: GoogleFonts.nunito(fontSize: 12),
                           ),
+                          if (isOffline && (e.venue?.trim().isNotEmpty ?? false))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'Venue: ${e.venue}',
+                                style: GoogleFonts.nunito(fontSize: 12),
+                              ),
+                            ),
+                          if ((e.description?.trim().isNotEmpty ?? false))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                e.description!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.hindSiliguri(fontSize: 12),
+                              ),
+                            ),
                           const SizedBox(height: 4),
                           Row(
                             children: [

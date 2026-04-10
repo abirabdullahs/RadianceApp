@@ -7,7 +7,13 @@ class NoteModel {
     this.description,
     required this.type,
     this.fileUrl,
+    this.youtubeUrl,
+    this.externalUrl,
+    this.textContent,
     this.content,
+    this.fileSizeKb,
+    this.durationSeconds,
+    this.thumbnailUrl,
     this.isPublished,
     this.displayOrder,
     this.viewCount,
@@ -23,7 +29,13 @@ class NoteModel {
   /// `lecture` = markdown in [content], optional video URL in [fileUrl].
   final String type;
   final String? fileUrl;
+  final String? youtubeUrl;
+  final String? externalUrl;
+  final String? textContent;
   final String? content;
+  final int? fileSizeKb;
+  final int? durationSeconds;
+  final String? thumbnailUrl;
   final bool? isPublished;
   final int? displayOrder;
   final int? viewCount;
@@ -39,7 +51,13 @@ class NoteModel {
       description: json['description'] as String?,
       type: json['type'] as String? ?? 'text',
       fileUrl: json['file_url'] as String?,
+      youtubeUrl: json['youtube_url'] as String?,
+      externalUrl: json['external_url'] as String?,
+      textContent: json['text_content'] as String?,
       content: json['content'] as String?,
+      fileSizeKb: (json['file_size_kb'] as num?)?.toInt(),
+      durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
+      thumbnailUrl: json['thumbnail_url'] as String?,
       isPublished: json['is_published'] as bool?,
       displayOrder: (json['display_order'] as num?)?.toInt(),
       viewCount: (json['view_count'] as num?)?.toInt(),
@@ -57,7 +75,13 @@ class NoteModel {
       'description': description,
       'type': type,
       'file_url': fileUrl,
+      'youtube_url': youtubeUrl,
+      'external_url': externalUrl,
+      'text_content': textContent,
       'content': content,
+      'file_size_kb': fileSizeKb,
+      'duration_seconds': durationSeconds,
+      'thumbnail_url': thumbnailUrl,
       'is_published': isPublished,
       'display_order': displayOrder,
       'view_count': viewCount,
@@ -74,7 +98,13 @@ class NoteModel {
     String? description,
     String? type,
     String? fileUrl,
+    String? youtubeUrl,
+    String? externalUrl,
+    String? textContent,
     String? content,
+    int? fileSizeKb,
+    int? durationSeconds,
+    String? thumbnailUrl,
     bool? isPublished,
     int? displayOrder,
     int? viewCount,
@@ -89,7 +119,13 @@ class NoteModel {
       description: description ?? this.description,
       type: type ?? this.type,
       fileUrl: fileUrl ?? this.fileUrl,
+      youtubeUrl: youtubeUrl ?? this.youtubeUrl,
+      externalUrl: externalUrl ?? this.externalUrl,
+      textContent: textContent ?? this.textContent,
       content: content ?? this.content,
+      fileSizeKb: fileSizeKb ?? this.fileSizeKb,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       isPublished: isPublished ?? this.isPublished,
       displayOrder: displayOrder ?? this.displayOrder,
       viewCount: viewCount ?? this.viewCount,

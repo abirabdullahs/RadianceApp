@@ -1,15 +1,28 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/constants.dart';
+import '../../../../core/services/pdf_service.dart';
+import '../../../../core/supabase_client.dart';
+import '../../../../shared/models/course_model.dart';
+import '../../../../shared/models/payment_ledger_model.dart';
+import '../../../../shared/models/payment_model.dart';
+import '../../../../shared/models/payment_settings_model.dart';
+import '../../../../shared/models/payment_type_model.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/user_model.dart';
+import '../../courses/repositories/course_repository.dart';
+import '../../payments/repositories/payment_repository.dart';
+import '../../payments/services/payment_service.dart';
 import '../repositories/student_repository.dart';
 
 /// Full-screen form to add a student (Auth sign-up + `users` row).
@@ -31,6 +44,11 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
   final _address = TextEditingController();
 
   final _repo = StudentRepository();
+  final _courseRepo = CourseRepository();
+  final _paymentRepo = PaymentRepository();
+  final _pdfService = PdfService();
+  late final PaymentService _paymentService =
+      PaymentService(repository: _paymentRepo);
 
   File? _photo;
   DateTime? _dob;
@@ -105,6 +123,304 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
     return null;
   }
 
+  Future<_AdmissionFlowResult?> _collectAdmissionFeeAndVoucher(
+    UserModel student,
+  ) async {
+    final types = await _paymentRepo.listPaymentTypes();
+    PaymentTypeModel? admissionType;
+    for (final t in types) {
+      if (t.code.trim().toLowerCase() == 'admission') {
+        admissionType = t;
+        break;
+      }
+    }
+    if (admissionType == null) return null;
+
+    final settings = await _paymentRepo.getPaymentSettings();
+    final activeCourses = (await _courseRepo.getCourses())
+        .where((c) => c.isActive)
+        .toList();
+    if (!mounted) return null;
+
+    if (activeCourses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Admission fee নেয়া যায়নি: কোনো সক্রিয় কোর্স নেই।',
+            style: GoogleFonts.hindSiliguri(),
+          ),
+        ),
+      );
+      return null;
+    }
+
+    final result = await _showAdmissionPaymentDialog(
+      student: student,
+      admissionType: admissionType,
+      settings: settings,
+      courses: activeCourses,
+    );
+    if (!mounted || result?.pdfBytes == null || result?.voucherNo == null) {
+      return result;
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('ভাউচার প্রস্তুত', style: GoogleFonts.hindSiliguri()),
+        content: SelectableText(
+          'ভাউচার নং: ${result!.voucherNo}',
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await SharePlus.instance.share(
+                ShareParams(
+                  files: [
+                    XFile.fromData(
+                      result.pdfBytes!,
+                      mimeType: 'application/pdf',
+                      name: 'RCC-${result.voucherNo}.pdf',
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: Text('শেয়ার', style: GoogleFonts.hindSiliguri()),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await Printing.layoutPdf(
+                onLayout: (_) async => result.pdfBytes!,
+                name: 'RCC-${result.voucherNo}.pdf',
+              );
+            },
+            child: Text('প্রিন্ট', style: GoogleFonts.hindSiliguri()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('পরে', style: GoogleFonts.hindSiliguri()),
+          ),
+        ],
+      ),
+    );
+    return result;
+  }
+
+  Future<_AdmissionFlowResult?> _showAdmissionPaymentDialog({
+    required UserModel student,
+    required PaymentTypeModel admissionType,
+    required PaymentSettingsModel settings,
+    required List<CourseModel> courses,
+  }) async {
+    final amountCtrl = TextEditingController(
+      text: settings
+          .defaultAmountForCode(
+            'admission',
+            fallback: admissionType.defaultAmount ?? 500,
+          )
+          .toStringAsFixed(2),
+    );
+    final noteCtrl = TextEditingController(text: 'ভর্তি ফি');
+    final methods = settings.allowedMethods();
+    String selectedCourseId = courses.first.id;
+    PaymentMethod selectedMethod = methods.first;
+    bool enrollNow = true;
+    bool saving = false;
+
+    final result = await showDialog<_AdmissionFlowResult?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            return AlertDialog(
+              title: Text(
+                'Admission Fee নিন',
+                style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: selectedCourseId,
+                    decoration: const InputDecoration(labelText: 'কোর্স'),
+                    items: courses
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c.id,
+                            child: Text(c.name, style: GoogleFonts.hindSiliguri()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: saving
+                        ? null
+                        : (v) => setLocalState(
+                              () => selectedCourseId = v ?? selectedCourseId,
+                            ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: amountCtrl,
+                    enabled: !saving,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'পরিমাণ (৳)'),
+                    style: GoogleFonts.nunito(),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<PaymentMethod>(
+                    value: selectedMethod,
+                    decoration: const InputDecoration(labelText: 'পেমেন্ট মাধ্যম'),
+                    items: methods
+                        .map(
+                          (m) => DropdownMenuItem<PaymentMethod>(
+                            value: m,
+                            child: Text(m.name.toUpperCase(), style: GoogleFonts.nunito()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: saving
+                        ? null
+                        : (m) => setLocalState(() => selectedMethod = m ?? selectedMethod),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: noteCtrl,
+                    enabled: !saving,
+                    decoration: const InputDecoration(labelText: 'নোট (ঐচ্ছিক)'),
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                  CheckboxListTile(
+                    value: enrollNow,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('এই কোর্সে এখনই ভর্তি করুন', style: GoogleFonts.hindSiliguri()),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: saving
+                        ? null
+                        : (v) => setLocalState(() => enrollNow = v ?? true),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.of(ctx).pop(),
+                  child: Text('এখন না', style: GoogleFonts.hindSiliguri()),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final amount =
+                              double.tryParse(amountCtrl.text.trim().replaceAll(',', '')) ??
+                                  0;
+                          if (amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'সঠিক পরিমাণ দিন',
+                                  style: GoogleFonts.hindSiliguri(),
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          setLocalState(() => saving = true);
+                          try {
+                            final course = courses.firstWhere((c) => c.id == selectedCourseId);
+                            if (enrollNow) {
+                              await _repo.enrollStudentInCourse(student.id, course.id);
+                            }
+
+                            final recorded = await _paymentService.recordPayment(
+                              PaymentRecordRequest(
+                                studentId: student.id,
+                                courseId: course.id,
+                                paymentTypeId: admissionType.id,
+                                paymentTypeCode: admissionType.code,
+                                amountDue: amount,
+                                amountPaid: amount,
+                                paymentMethod: selectedMethod.toJson(),
+                                note: noteCtrl.text.trim().isEmpty
+                                    ? null
+                                    : noteCtrl.text.trim(),
+                                description: 'Admission fee',
+                                paidAt: DateTime.now(),
+                                createdBy: supabaseClient.auth.currentUser?.id,
+                                dueDate: DateTime.now(),
+                              ),
+                            );
+
+                            final payment = PaymentModel(
+                              id: recorded.ledger.id,
+                              voucherNo: recorded.ledger.voucherNo,
+                              studentId: student.id,
+                              courseId: course.id,
+                              forMonth: DateTime(
+                                DateTime.now().year,
+                                DateTime.now().month,
+                                1,
+                              ),
+                              amount: recorded.ledger.amountPaid,
+                              subtotal: recorded.ledger.amountDue,
+                              discount: recorded.ledger.discountAmount,
+                              paymentMethod: PaymentMethod.fromJson(
+                                recorded.ledger.paymentMethod,
+                              ),
+                              status: recorded.ledger.status == LedgerPaymentStatus.partial
+                                  ? PaymentStatus.partial
+                                  : PaymentStatus.paid,
+                              note: recorded.ledger.note,
+                              paidAt: recorded.ledger.paidAt,
+                              createdBy: recorded.ledger.createdBy,
+                            );
+                            final pdfBytes = await _pdfService.generateVoucherPdf(
+                              payment,
+                              student,
+                              course,
+                              serviceName: admissionType.nameBn,
+                            );
+                            if (!context.mounted) return;
+                            Navigator.of(ctx).pop(
+                              _AdmissionFlowResult(
+                                voucherNo: recorded.ledger.voucherNo,
+                                pdfBytes: pdfBytes,
+                              ),
+                            );
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            setLocalState(() => saving = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Admission fee ব্যর্থ: $e',
+                                  style: GoogleFonts.hindSiliguri(),
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  child: Text(
+                    saving ? 'সংরক্ষণ হচ্ছে…' : 'সংরক্ষণ + ভাউচার',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    amountCtrl.dispose();
+    noteCtrl.dispose();
+    return result;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -127,6 +443,8 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
       );
 
       final created = await _repo.addStudent(draft, _photo);
+      if (!mounted) return;
+      final admission = await _collectAdmissionFeeAndVoucher(created);
       if (!mounted) return;
 
       await showDialog<void>(
@@ -170,6 +488,25 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
                   color: context.themePrimary,
                 ),
               ),
+              if (admission?.voucherNo != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Admission ভাউচার:',
+                  style: GoogleFonts.hindSiliguri(
+                    fontSize: 12,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  admission!.voucherNo!,
+                  style: GoogleFonts.nunito(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: context.themePrimary,
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -421,4 +758,14 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
       ),
     );
   }
+}
+
+class _AdmissionFlowResult {
+  const _AdmissionFlowResult({
+    this.voucherNo,
+    this.pdfBytes,
+  });
+
+  final String? voucherNo;
+  final Uint8List? pdfBytes;
 }

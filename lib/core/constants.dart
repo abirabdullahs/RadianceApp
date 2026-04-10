@@ -39,12 +39,14 @@ const String kStorageBucketAvatars = 'avatars';
 /// Community chat attachments (images, PDFs; create in dashboard).
 const String kStorageBucketCommunity = 'community';
 const String kStorageBucketQbank = 'qbank';
+const String kStorageBucketNotes = 'notes';
 
 const String kTableUsers = 'users';
 const String kTableCourses = 'courses';
 const String kTableSubjects = 'subjects';
 const String kTableChapters = 'chapters';
 const String kTableNotes = 'notes';
+const String kTableNoteProgress = 'note_progress';
 const String kTableEnrollments = 'enrollments';
 const String kTablePayments = 'payments';
 const String kTablePaymentDues = 'payment_dues';

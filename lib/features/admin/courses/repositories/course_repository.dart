@@ -227,7 +227,13 @@ class CourseRepository {
       'description': note.description,
       'type': note.type,
       'file_url': note.fileUrl,
+      'youtube_url': note.youtubeUrl,
+      'external_url': note.externalUrl,
+      'text_content': note.textContent,
       'content': note.content,
+      'file_size_kb': note.fileSizeKb,
+      'duration_seconds': note.durationSeconds,
+      'thumbnail_url': note.thumbnailUrl,
       'is_published': note.isPublished ?? true,
       'display_order': note.displayOrder ?? 0,
       'created_by': _client.auth.currentUser?.id,
@@ -244,7 +250,13 @@ class CourseRepository {
       'description': note.description,
       'type': note.type,
       'file_url': note.fileUrl,
+      'youtube_url': note.youtubeUrl,
+      'external_url': note.externalUrl,
+      'text_content': note.textContent,
       'content': note.content,
+      'file_size_kb': note.fileSizeKb,
+      'duration_seconds': note.durationSeconds,
+      'thumbnail_url': note.thumbnailUrl,
       'is_published': note.isPublished,
       'display_order': note.displayOrder,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -253,6 +265,73 @@ class CourseRepository {
 
   Future<void> deleteNote(String id) async {
     await _client.from(kTableNotes).delete().eq('id', id);
+  }
+
+  Future<String> uploadNoteFile({
+    required File file,
+    required String chapterId,
+    required String kind,
+  }) async {
+    final ext = _fileExtension(file.path);
+    final path = 'chapters/$chapterId/$kind/${_uuid.v4()}.$ext';
+    await _client.storage.from(kStorageBucketNotes).upload(
+          path,
+          file,
+          fileOptions: FileOptions(
+            upsert: false,
+            contentType: _mimeForExtension(ext),
+          ),
+        );
+    return _client.storage.from(kStorageBucketNotes).getPublicUrl(path);
+  }
+
+  Future<void> deleteNoteFileByUrl(String? fileUrl) async {
+    final path = _pathFromPublicUrl(fileUrl, kStorageBucketNotes);
+    if (path == null) return;
+    await _client.storage.from(kStorageBucketNotes).remove([path]);
+  }
+
+  Future<int> estimateNoteStorageBytes() async {
+    final rows = await _client
+        .from(kTableNotes)
+        .select('file_size_kb')
+        .not('file_size_kb', 'is', null);
+    var kb = 0;
+    for (final e in rows as List<dynamic>) {
+      final value = Map<String, dynamic>.from(e as Map)['file_size_kb'];
+      if (value is num) {
+        kb += value.toInt();
+      }
+    }
+    return kb * 1024;
+  }
+
+  Future<List<NoteModel>> addBulkPdfNotes({
+    required String chapterId,
+    required List<File> files,
+    required bool publish,
+  }) async {
+    final added = <NoteModel>[];
+    var order = await nextNoteDisplayOrder(chapterId);
+    for (final file in files) {
+      final url = await uploadNoteFile(file: file, chapterId: chapterId, kind: 'pdf');
+      final name = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : 'PDF';
+      final note = await addNote(
+        NoteModel(
+          id: '',
+          chapterId: chapterId,
+          title: name,
+          type: 'pdf',
+          fileUrl: url,
+          isPublished: publish,
+          displayOrder: order,
+          fileSizeKb: (await file.length() / 1024).round(),
+        ),
+      );
+      added.add(note);
+      order += 1;
+    }
+    return added;
   }
 
   /// Suggestions linked to a chapter ([chapter_id] set in DB).
@@ -336,10 +415,33 @@ class CourseRepository {
         return 'image/webp';
       case 'gif':
         return 'image/gif';
+      case 'pdf':
+        return 'application/pdf';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'avi':
+        return 'video/x-msvideo';
+      case 'mkv':
+        return 'video/x-matroska';
+      case 'txt':
+        return 'text/plain';
       case 'jpg':
       case 'jpeg':
       default:
         return 'image/jpeg';
     }
+  }
+
+  static String? _pathFromPublicUrl(String? publicUrl, String bucket) {
+    if (publicUrl == null || publicUrl.isEmpty) return null;
+    final uri = Uri.tryParse(publicUrl);
+    if (uri == null) return null;
+    final marker = '/storage/v1/object/public/$bucket/';
+    final text = uri.toString();
+    final idx = text.indexOf(marker);
+    if (idx == -1) return null;
+    return text.substring(idx + marker.length);
   }
 }

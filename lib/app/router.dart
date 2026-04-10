@@ -23,6 +23,7 @@ import '../features/admin/payments/screens/admin_payment_sms_templates_screen.da
 import '../features/admin/exams/screens/admin_exam_detail_screen.dart';
 import '../features/admin/exams/screens/admin_exam_editor_screen.dart';
 import '../features/admin/exams/screens/admin_exams_list_screen.dart';
+import '../features/admin/exams/screens/admin_results_dashboard_screen.dart';
 import '../features/admin/students/screens/admin_student_profile_screen.dart';
 import '../features/admin/students/screens/admin_students_list_screen.dart';
 import '../features/admin/students/screens/add_student_screen.dart';
@@ -236,6 +237,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AdminExamsScreen(),
     ),
     GoRoute(
+      path: '/admin/results',
+      builder: (context, state) => const AdminResultsDashboardScreen(),
+    ),
+    GoRoute(
       path: '/admin/qbank/chapter/:chapterId',
       builder: (context, state) {
         final chapterId = state.pathParameters['chapterId']!;
@@ -379,6 +384,10 @@ final GoRouter appRouter = GoRouter(
             final id = state.pathParameters['id']!;
             return CourseDetailScreen(courseId: id);
           },
+        ),
+        GoRoute(
+          path: '/student/notes/downloads',
+          builder: (context, state) => const DownloadedNotesScreen(),
         ),
         GoRoute(
           path: '/student/notes/:chapterId',

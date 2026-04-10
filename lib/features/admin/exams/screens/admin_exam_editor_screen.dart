@@ -23,15 +23,19 @@ class AdminExamEditorScreen extends ConsumerStatefulWidget {
 
 class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
   final _title = TextEditingController();
+  final _description = TextEditingController();
+  final _venue = TextEditingController();
   final _duration = TextEditingController(text: '30');
   final _totalMarks = TextEditingController(text: '30');
   final _passMarks = TextEditingController(text: '15');
   final _neg = TextEditingController(text: '0');
+  final _marksPerQuestion = TextEditingController(text: '1');
   String _examMode = 'online';
   String? _courseId;
   String? _subjectId;
   DateTime? _startTime;
   DateTime? _endTime;
+  DateTime? _examDate;
   List<SubjectModel> _subjects = const [];
   List<ChapterModel> _chapters = const [];
   final Set<String> _selectedChapterIds = <String>{};
@@ -40,10 +44,13 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
   @override
   void dispose() {
     _title.dispose();
+    _description.dispose();
+    _venue.dispose();
     _duration.dispose();
     _totalMarks.dispose();
     _passMarks.dispose();
     _neg.dispose();
+    _marksPerQuestion.dispose();
     super.dispose();
   }
 
@@ -160,6 +167,16 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
                 style: GoogleFonts.hindSiliguri(),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: _description,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'বিবরণ',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                style: GoogleFonts.hindSiliguri(),
+              ),
+              const SizedBox(height: 12),
               ListTile(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -193,6 +210,38 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
                   if (dt != null) setState(() => _endTime = dt);
                 },
               ),
+              if (_examMode == 'offline') ...[
+                const SizedBox(height: 10),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  ),
+                  title: Text(
+                    _examDate == null ? 'পরীক্ষার তারিখ নির্বাচন' : 'তারিখ: ${_fmtDate(_examDate!)}',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                  trailing: const Icon(Icons.event),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _examDate ?? DateTime.now(),
+                      firstDate: DateTime(DateTime.now().year - 1),
+                      lastDate: DateTime(DateTime.now().year + 5),
+                    );
+                    if (date != null) setState(() => _examDate = date);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _venue,
+                  decoration: InputDecoration(
+                    labelText: 'স্থান (Venue)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
+                ),
+              ],
               if (_examMode == 'online') ...[
                 const SizedBox(height: 12),
                 TextField(
@@ -230,25 +279,59 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _marksPerQuestion,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'প্রতি প্রশ্ন নম্বর',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
               ],
               const SizedBox(height: 24),
-              FilledButton(
-                onPressed: _loading
-                    ? null
-                    : () async {
-                        await _save(context, items);
-                      },
-                style: FilledButton.styleFrom(
-                  backgroundColor: context.themePrimary,
-                  padding: const EdgeInsets.all(16),
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text('সংরক্ষণ', style: GoogleFonts.hindSiliguri(color: Colors.white)),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _loading
+                          ? null
+                          : () async {
+                              await _save(
+                                context: context,
+                                courseItems: items,
+                                status: 'draft',
+                              );
+                            },
+                      child: Text('Draft', style: GoogleFonts.hindSiliguri()),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _loading
+                          ? null
+                          : () async {
+                              await _save(
+                                context: context,
+                                courseItems: items,
+                                status: 'scheduled',
+                              );
+                            },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: context.themePrimary,
+                        padding: const EdgeInsets.all(16),
+                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text('Publish', style: GoogleFonts.hindSiliguri(color: Colors.white)),
+                    ),
+                  ),
+                ],
               ),
             ],
           );
@@ -259,10 +342,11 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
     );
   }
 
-  Future<void> _save(
-    BuildContext context,
-    List<CourseListItem> courseItems,
-  ) async {
+  Future<void> _save({
+    required BuildContext context,
+    required List<CourseListItem> courseItems,
+    required String status,
+  }) async {
     final title = _title.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -297,21 +381,27 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
         chapterIds: _selectedChapterIds.toList(),
         examMode: _examMode,
         title: title,
+        description: _description.text.trim().isEmpty ? null : _description.text.trim(),
         durationMinutes: _examMode == 'online' ? (int.tryParse(_duration.text) ?? 30) : 30,
         totalMarks: _examMode == 'online' ? double.tryParse(_totalMarks.text) : null,
         passMarks: _examMode == 'online' ? double.tryParse(_passMarks.text) : null,
+        marksPerQuestion: _examMode == 'online' ? double.tryParse(_marksPerQuestion.text) : null,
         negativeMarking: _examMode == 'online' ? (double.tryParse(_neg.text) ?? 0) : 0,
-        status: 'scheduled',
+        status: status,
         startTime: _startTime,
         endTime: _endTime,
+        examDate: _examDate,
+        venue: _venue.text.trim().isEmpty ? null : _venue.text.trim(),
       );
-      await NotificationsRepository().sendExamScheduleNotice(
-        courseId: cid,
-        examId: exam.id,
-        examTitle: exam.title,
-        examMode: exam.examMode,
-        startTime: _startTime!,
-      );
+      if (status == 'scheduled' && _startTime != null) {
+        await NotificationsRepository().sendExamScheduleNotice(
+          courseId: cid,
+          examId: exam.id,
+          examTitle: exam.title,
+          examMode: exam.examMode,
+          startTime: _startTime!,
+        );
+      }
       if (context.mounted) {
         context.go('/admin/exams/${exam.id}');
       }
@@ -359,5 +449,10 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
   String _fmt(DateTime dt) {
     final d = dt.toLocal();
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _fmtDate(DateTime dt) {
+    final d = dt.toLocal();
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   }
 }

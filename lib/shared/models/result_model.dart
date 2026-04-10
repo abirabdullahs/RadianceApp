@@ -10,7 +10,17 @@ class ResultModel {
     this.grade,
     this.rank,
     this.isPassed,
+    this.examType,
+    this.totalCorrect,
+    this.totalWrong,
+    this.totalSkipped,
+    this.negativeDeduction,
+    this.timeTakenSeconds,
+    this.remarks,
+    this.isPublished,
+    this.createdBy,
     this.publishedAt,
+    this.updatedAt,
   });
 
   final String id;
@@ -22,7 +32,17 @@ class ResultModel {
   final String? grade;
   final int? rank;
   final bool? isPassed;
+  final String? examType;
+  final int? totalCorrect;
+  final int? totalWrong;
+  final int? totalSkipped;
+  final double? negativeDeduction;
+  final int? timeTakenSeconds;
+  final String? remarks;
+  final bool? isPublished;
+  final String? createdBy;
   final DateTime? publishedAt;
+  final DateTime? updatedAt;
 
   factory ResultModel.fromJson(Map<String, dynamic> json) {
     return ResultModel(
@@ -37,7 +57,19 @@ class ResultModel {
       grade: json['grade'] as String?,
       rank: (json['rank'] as num?)?.toInt(),
       isPassed: json['is_passed'] as bool?,
+      examType: json['exam_type'] as String?,
+      totalCorrect: (json['total_correct'] as num?)?.toInt(),
+      totalWrong: (json['total_wrong'] as num?)?.toInt(),
+      totalSkipped: (json['total_skipped'] as num?)?.toInt(),
+      negativeDeduction: json['negative_deduction'] != null
+          ? _parseDouble(json['negative_deduction'])
+          : null,
+      timeTakenSeconds: (json['time_taken_seconds'] as num?)?.toInt(),
+      remarks: json['remarks'] as String?,
+      isPublished: json['is_published'] as bool?,
+      createdBy: json['created_by'] as String?,
       publishedAt: _parseDateTime(json['published_at']),
+      updatedAt: _parseDateTime(json['updated_at']),
     );
   }
 
@@ -52,7 +84,17 @@ class ResultModel {
       'grade': grade,
       'rank': rank,
       'is_passed': isPassed,
+      'exam_type': examType,
+      'total_correct': totalCorrect,
+      'total_wrong': totalWrong,
+      'total_skipped': totalSkipped,
+      'negative_deduction': negativeDeduction,
+      'time_taken_seconds': timeTakenSeconds,
+      'remarks': remarks,
+      'is_published': isPublished,
+      'created_by': createdBy,
       'published_at': publishedAt?.toUtc().toIso8601String(),
+      'updated_at': updatedAt?.toUtc().toIso8601String(),
     };
   }
 }
