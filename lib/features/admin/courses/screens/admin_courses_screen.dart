@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../providers/courses_provider.dart';
 import '../widgets/add_course_sheet.dart';
 import '../widgets/course_card.dart';
@@ -53,148 +53,149 @@ class _AdminCoursesScreenState extends ConsumerState<AdminCoursesScreen> {
     final coursesAsync = ref.watch(coursesProvider);
     final filter = ref.read(coursesProvider.notifier).filter;
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      backgroundColor: scheme.surface,
+    return AdminResponsiveScaffold(
+      title: Text(
+        'কোর্স ব্যবস্থাপনা',
+        style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search),
+          tooltip: 'খুঁজুন',
+          onPressed: () {
+            setState(() {
+              _searchOpen = !_searchOpen;
+              if (!_searchOpen) {
+                _query = '';
+                _searchController.clear();
+              }
+            });
+          },
+        ),
+      ],
       floatingActionButton: FloatingActionButton(
         onPressed: _openAddSheet,
         backgroundColor: AppTheme.accent,
         foregroundColor: const Color(0xFF1A1204),
         child: const Icon(Icons.add),
       ),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(
-          'কোর্স ব্যবস্থাপনা',
-          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'খুঁজুন',
-            onPressed: () {
-              setState(() {
-                _searchOpen = !_searchOpen;
-                if (!_searchOpen) {
-                  _query = '';
-                  _searchController.clear();
-                }
-              });
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_searchOpen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                onChanged: (v) => setState(() => _query = v),
-                decoration: InputDecoration(
-                  hintText: 'কোর্সের নাম খুঁজুন…',
-                  hintStyle: GoogleFonts.hindSiliguri(),
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                        ),
-                  filled: true,
-                  fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      body: ColoredBox(
+        color: scheme.surface,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_searchOpen)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    hintText: 'কোর্সের নাম খুঁজুন…',
+                    hintStyle: GoogleFonts.hindSiliguri(),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                          ),
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
                 ),
-                style: GoogleFonts.hindSiliguri(),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _FilterChip(
+                      label: 'সব',
+                      selected: filter == CourseListFilter.all,
+                      onTap: () => ref
+                          .read(coursesProvider.notifier)
+                          .setFilter(CourseListFilter.all),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'সক্রিয়',
+                      selected: filter == CourseListFilter.active,
+                      onTap: () => ref
+                          .read(coursesProvider.notifier)
+                          .setFilter(CourseListFilter.active),
+                    ),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                      label: 'নিষ্ক্রিয়',
+                      selected: filter == CourseListFilter.inactive,
+                      onTap: () => ref
+                          .read(coursesProvider.notifier)
+                          .setFilter(CourseListFilter.inactive),
+                    ),
+                  ],
+                ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _FilterChip(
-                    label: 'সব',
-                    selected: filter == CourseListFilter.all,
-                    onTap: () => ref
-                        .read(coursesProvider.notifier)
-                        .setFilter(CourseListFilter.all),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'সক্রিয়',
-                    selected: filter == CourseListFilter.active,
-                    onTap: () => ref
-                        .read(coursesProvider.notifier)
-                        .setFilter(CourseListFilter.active),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'নিষ্ক্রিয়',
-                    selected: filter == CourseListFilter.inactive,
-                    onTap: () => ref
-                        .read(coursesProvider.notifier)
-                        .setFilter(CourseListFilter.inactive),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: coursesAsync.when(
-              loading: () => _ShimmerCourseGrid(scheme: scheme),
-              error: (e, st) => _ErrorBody(
-                message: e.toString(),
-                onRetry: () =>
-                    ref.read(coursesProvider.notifier).refresh(),
-              ),
-              data: (items) {
-                final visible = _applySearch(items);
-                if (items.isEmpty) {
-                  return _EmptyBody(
-                    icon: Icons.menu_book_outlined,
-                    title: 'এখনও কোনো কোর্স নেই',
-                    subtitle: 'নিচের + বাটনে নতুন কোর্স যোগ করুন',
-                  );
-                }
-                if (visible.isEmpty) {
-                  return _EmptyBody(
-                    icon: Icons.search_off_rounded,
-                    title: 'কোনো কোর্স মেলেনি',
-                    subtitle: 'অন্য কীওয়ার্ড দিয়ে খুঁজুন',
-                  );
-                }
-                return GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.72,
-                  ),
-                  itemCount: visible.length,
-                  itemBuilder: (context, i) {
-                    final item = visible[i];
-                    return CourseCard(
-                      item: item,
-                      onTap: () => context.push(
-                        '/admin/courses/${item.course.id}',
-                      ),
+            Expanded(
+              child: coursesAsync.when(
+                loading: () => _ShimmerCourseGrid(scheme: scheme),
+                error: (e, st) => _ErrorBody(
+                  message: e.toString(),
+                  onRetry: () =>
+                      ref.read(coursesProvider.notifier).refresh(),
+                ),
+                data: (items) {
+                  final visible = _applySearch(items);
+                  if (items.isEmpty) {
+                    return _EmptyBody(
+                      icon: Icons.menu_book_outlined,
+                      title: 'এখনও কোনো কোর্স নেই',
+                      subtitle: 'নিচের + বাটনে নতুন কোর্স যোগ করুন',
                     );
-                  },
-                );
-              },
+                  }
+                  if (visible.isEmpty) {
+                    return _EmptyBody(
+                      icon: Icons.search_off_rounded,
+                      title: 'কোনো কোর্স মেলেনি',
+                      subtitle: 'অন্য কীওয়ার্ড দিয়ে খুঁজুন',
+                    );
+                  }
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final crossAxis = adminCourseGridCrossAxisCount(constraints.maxWidth);
+                      return GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxis,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemCount: visible.length,
+                        itemBuilder: (context, i) {
+                          final item = visible[i];
+                          return CourseCard(
+                            item: item,
+                            onTap: () => context.push(
+                              '/admin/courses/${item.course.id}',
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -242,21 +243,26 @@ class _ShimmerCourseGrid extends StatelessWidget {
     return Shimmer.fromColors(
       baseColor: scheme.surfaceContainerHighest,
       highlightColor: scheme.surface,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.72,
-        ),
-        itemCount: 6,
-        itemBuilder: (context, index) => Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-          ),
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final crossAxis = adminCourseGridCrossAxisCount(constraints.maxWidth);
+          return GridView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxis,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.72,
+            ),
+            itemCount: 6,
+            itemBuilder: (context, index) => Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

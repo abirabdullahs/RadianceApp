@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../repositories/exam_repository.dart';
 
@@ -40,14 +40,8 @@ class _AdminExamEditorScreenState extends ConsumerState<AdminExamEditorScreen> {
   Widget build(BuildContext context) {
     final coursesAsync = ref.watch(coursesProvider);
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('নতুন পরীক্ষা', style: GoogleFonts.hindSiliguri()),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text('নতুন পরীক্ষা', style: GoogleFonts.hindSiliguri()),
       body: coursesAsync.when(
         data: (items) {
           if (items.isEmpty) {

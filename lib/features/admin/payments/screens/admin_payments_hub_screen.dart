@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/payment_due_model.dart';
 import '../../../../shared/models/payment_model.dart';
 import '../../courses/providers/courses_provider.dart';
@@ -99,20 +99,14 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: [
-            Tab(child: Text('লেনদেন', style: GoogleFonts.hindSiliguri())),
-            Tab(child: Text('বকেয়া', style: GoogleFonts.hindSiliguri())),
-          ],
-        ),
+    return AdminResponsiveScaffold(
+      title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+      bottom: TabBar(
+        controller: _tabs,
+        tabs: [
+          Tab(child: Text('লেনদেন', style: GoogleFonts.hindSiliguri())),
+          Tab(child: Text('বকেয়া', style: GoogleFonts.hindSiliguri())),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/payments/add'),

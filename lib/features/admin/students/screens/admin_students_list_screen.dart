@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/user_model.dart';
 import '../repositories/student_repository.dart';
 
@@ -35,14 +35,8 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(_studentListProvider(_query));
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/students/add'),
         backgroundColor: context.themePrimary,

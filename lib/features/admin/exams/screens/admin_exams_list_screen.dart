@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../repositories/exam_repository.dart';
 
@@ -20,14 +20,8 @@ class AdminExamsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(_adminExamsListProvider);
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/exams/new'),
         backgroundColor: context.themePrimary,

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../app/theme.dart';
-import '../widgets/admin_drawer.dart';
+import '../widgets/admin_responsive_scaffold.dart';
 import '../../home/repositories/home_content_repository.dart';
 
 /// Manage [home_content] rows (banners, notices).
@@ -96,14 +96,8 @@ class _AdminHomeCmsScreenState extends State<AdminHomeCmsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('হোম কন্টেন্ট', style: GoogleFonts.hindSiliguri()),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text('হোম কন্টেন্ট', style: GoogleFonts.hindSiliguri()),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddBannerDialog,
         backgroundColor: context.themePrimary,

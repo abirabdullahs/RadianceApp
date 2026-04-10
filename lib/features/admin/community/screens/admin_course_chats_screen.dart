@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
 import '../../../student/community/repositories/community_repository.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 
 /// Admin: list of per-course messenger groups; tap opens realtime chat.
 class AdminCourseChatsScreen extends StatefulWidget {
@@ -33,28 +33,22 @@ class _AdminCourseChatsScreenState extends State<AdminCourseChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        title: Text(
-          'কোর্স চ্যাট',
-          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-        ),
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'রিফ্রেশ',
-            onPressed: () {
-              setState(() {
-                _future = CommunityRepository().listCourseGroupsForAdmin();
-              });
-            },
-          ),
-        ],
+    return AdminResponsiveScaffold(
+      title: Text(
+        'কোর্স চ্যাট',
+        style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'রিফ্রেশ',
+          onPressed: () {
+            setState(() {
+              _future = CommunityRepository().listCourseGroupsForAdmin();
+            });
+          },
+        ),
+      ],
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
         builder: (context, snap) {

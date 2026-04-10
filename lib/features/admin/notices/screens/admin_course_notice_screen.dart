@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../notifications/providers/unread_notifications_provider.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 
 /// Admin posts a notice to all students enrolled in [courseId].
 class AdminCourseNoticeScreen extends ConsumerStatefulWidget {
@@ -71,18 +71,12 @@ class _AdminCourseNoticeScreenState extends ConsumerState<AdminCourseNoticeScree
   @override
   Widget build(BuildContext context) {
     final name = widget.courseName?.trim();
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(
-          name != null && name.isNotEmpty ? 'নোটিশ · $name' : 'কোর্স নোটিশ',
-          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+    return AdminResponsiveScaffold(
+      title: Text(
+        name != null && name.isNotEmpty ? 'নোটিশ · $name' : 'কোর্স নোটিশ',
+        style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),

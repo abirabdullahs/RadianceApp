@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../app/theme.dart';
 import '../repositories/course_repository.dart';
 import '../widgets/admin_course_syllabus_tab.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/course_model.dart';
 
 /// Admin: course summary + syllabus (subjects → chapters → lectures & suggestions).
@@ -36,26 +36,14 @@ class _AdminCourseDetailScreenState extends State<AdminCourseDetailScreen> {
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            drawer: const AdminDrawer(),
-            appBar: AppBar(
-              leading: const AppBarDrawerLeading(),
-              automaticallyImplyLeading: false,
-              leadingWidth: leadingWidthForDrawer(context),
-              title: Text('কোর্স', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-            ),
+          return AdminResponsiveScaffold(
+            title: Text('কোর্স', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
         if (snap.hasError) {
-          return Scaffold(
-            drawer: const AdminDrawer(),
-            appBar: AppBar(
-              leading: const AppBarDrawerLeading(),
-              automaticallyImplyLeading: false,
-              leadingWidth: leadingWidthForDrawer(context),
-              title: Text('কোর্স', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-            ),
+          return AdminResponsiveScaffold(
+            title: Text('কোর্স', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -71,24 +59,18 @@ class _AdminCourseDetailScreenState extends State<AdminCourseDetailScreen> {
         final c = snap.data!;
         return DefaultTabController(
           length: 2,
-          child: Scaffold(
-            drawer: const AdminDrawer(),
-            appBar: AppBar(
-              leading: const AppBarDrawerLeading(),
-              automaticallyImplyLeading: false,
-              leadingWidth: leadingWidthForDrawer(context),
-              title: Text(
-                c.name,
-                style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              bottom: TabBar(
-                tabs: [
-                  Tab(child: Text('তথ্য', style: GoogleFonts.hindSiliguri())),
-                  Tab(child: Text('সিলেবাস', style: GoogleFonts.hindSiliguri())),
-                ],
-              ),
+          child: AdminResponsiveScaffold(
+            title: Text(
+              c.name,
+              style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            bottom: TabBar(
+              tabs: [
+                Tab(child: Text('তথ্য', style: GoogleFonts.hindSiliguri())),
+                Tab(child: Text('সিলেবাস', style: GoogleFonts.hindSiliguri())),
+              ],
             ),
             body: TabBarView(
               children: [

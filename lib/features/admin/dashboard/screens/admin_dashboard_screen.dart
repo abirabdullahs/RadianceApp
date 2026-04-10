@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../providers/dashboard_provider.dart';
 import '../repositories/dashboard_repository.dart';
 
@@ -18,20 +18,14 @@ class AdminDashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(adminDashboardProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('অ্যাডমিন', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(adminDashboardProvider),
-          ),
-        ],
-      ),
-      drawer: const AdminDrawer(),
+    return AdminResponsiveScaffold(
+      title: Text('অ্যাডমিন', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: () => ref.invalidate(adminDashboardProvider),
+        ),
+      ],
       body: async.when(
         data: (data) => _DashboardBody(data: data),
         loading: () => const Center(child: CircularProgressIndicator()),

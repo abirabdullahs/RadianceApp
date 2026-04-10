@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../courses/providers/courses_provider.dart';
 
 /// Pick course + date, then open [AttendanceTakingScreen].
@@ -23,14 +23,8 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   Widget build(BuildContext context) {
     final coursesAsync = ref.watch(coursesProvider);
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
       body: coursesAsync.when(
         data: (items) {
           if (items.isEmpty) {
