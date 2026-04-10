@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../shared/models/payment_report_models.dart';
@@ -41,6 +42,29 @@ class _AdminPaymentReportsScreenState
     );
     if (picked == null) return;
     setState(() => _month = DateTime(picked.year, picked.month, 1));
+  }
+
+  Future<void> _shareTextCsv({
+    required String filename,
+    required List<String> headers,
+    required List<List<String>> rows,
+  }) async {
+    final b = StringBuffer();
+    b.writeln(headers.join(','));
+    for (final row in rows) {
+      b.writeln(row.map(_csvCell).join(','));
+    }
+    await SharePlus.instance.share(
+      ShareParams(
+        text: b.toString(),
+        subject: filename,
+      ),
+    );
+  }
+
+  String _csvCell(String v) {
+    final escaped = v.replaceAll('"', '""');
+    return '"$escaped"';
   }
 
   @override
@@ -156,7 +180,31 @@ class _AdminPaymentReportsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Monthly Collection', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Monthly Collection', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                          ),
+                          IconButton(
+                            tooltip: 'Share CSV',
+                            onPressed: () async {
+                              await _shareTextCsv(
+                                filename: 'monthly_collection_${DateFormat('yyyy_MM').format(_month)}.csv',
+                                headers: const ['payment_type', 'collected', 'transactions', 'students'],
+                                rows: r.breakdown
+                                    .map((e) => [
+                                          e.paymentTypeCode,
+                                          e.collectedAmount.toStringAsFixed(2),
+                                          e.transactionsCount.toString(),
+                                          e.studentCount.toString(),
+                                        ])
+                                    .toList(),
+                              );
+                            },
+                            icon: const Icon(Icons.ios_share_outlined),
+                          ),
+                        ],
+                      ),
                       Text('মোট: ${fmt.format(r.totalCollected)} · Tx: ${r.totalTransactions}', style: GoogleFonts.nunito()),
                       const SizedBox(height: 8),
                       ...r.breakdown.map(
@@ -186,7 +234,44 @@ class _AdminPaymentReportsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Due Report', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('Due Report', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                          ),
+                          IconButton(
+                            tooltip: 'Share CSV',
+                            onPressed: () async {
+                              await _shareTextCsv(
+                                filename: 'due_report_${DateFormat('yyyy_MM').format(_month)}.csv',
+                                headers: const [
+                                  'student_id',
+                                  'student_name',
+                                  'course',
+                                  'type',
+                                  'status',
+                                  'due_date',
+                                  'remaining',
+                                  'overdue_days',
+                                ],
+                                rows: rows
+                                    .map((d) => [
+                                          d.studentId,
+                                          d.studentName,
+                                          d.courseName,
+                                          d.paymentTypeCode,
+                                          d.status,
+                                          DateFormat('yyyy-MM-dd').format(d.dueDate),
+                                          d.remainingAmount.toStringAsFixed(2),
+                                          d.overdueDays.toString(),
+                                        ])
+                                    .toList(),
+                              );
+                            },
+                            icon: const Icon(Icons.ios_share_outlined),
+                          ),
+                        ],
+                      ),
                       Text('Rows ${rows.length} · Total due ${fmt.format(total)}', style: GoogleFonts.nunito()),
                       const SizedBox(height: 8),
                       ...rows.take(30).map(
@@ -216,7 +301,46 @@ class _AdminPaymentReportsScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Student Annual Report', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('Student Annual Report', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+                            ),
+                            IconButton(
+                              tooltip: 'Share CSV',
+                              onPressed: () async {
+                                await _shareTextCsv(
+                                  filename: 'student_annual_${r.studentId}_${
+                                      r.year
+                                    }.csv',
+                                  headers: const [
+                                    'course',
+                                    'type',
+                                    'month',
+                                    'status',
+                                    'amount',
+                                    'paid',
+                                    'remaining',
+                                  ],
+                                  rows: r.rows
+                                      .map((d) => [
+                                            d.courseName,
+                                            d.paymentTypeCode,
+                                            d.forMonth == null
+                                                ? ''
+                                                : DateFormat('yyyy-MM').format(d.forMonth!),
+                                            d.status,
+                                            d.amount.toStringAsFixed(2),
+                                            d.paidAmount.toStringAsFixed(2),
+                                            d.remainingAmount.toStringAsFixed(2),
+                                          ])
+                                      .toList(),
+                                );
+                              },
+                              icon: const Icon(Icons.ios_share_outlined),
+                            ),
+                          ],
+                        ),
                         Text('Due ${fmt.format(r.totalDue)} · Paid ${fmt.format(r.totalPaid)} · Remaining ${fmt.format(r.totalRemaining)}', style: GoogleFonts.nunito()),
                         const SizedBox(height: 8),
                         ...r.rows.take(24).map(

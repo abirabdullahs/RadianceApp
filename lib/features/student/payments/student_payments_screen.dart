@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/payment_ledger_model.dart';
+import '../../../shared/models/payment_model.dart';
 import '../../../shared/models/payment_schedule_model.dart';
 import '../../../shared/models/payment_settings_model.dart';
 import '../../admin/payments/repositories/payment_repository.dart';
+import '../../admin/courses/repositories/course_repository.dart';
+import '../../admin/students/repositories/student_repository.dart';
+import '../../../core/services/pdf_service.dart';
 import '../widgets/student_drawer.dart';
 
 class StudentPaymentsScreen extends StatefulWidget {
@@ -18,6 +24,10 @@ class StudentPaymentsScreen extends StatefulWidget {
 
 class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
   late Future<_PayBundle> _future;
+  final _paymentRepo = PaymentRepository();
+  final _studentRepo = StudentRepository();
+  final _courseRepo = CourseRepository();
+  final _pdfService = PdfService();
 
   @override
   void initState() {
@@ -27,15 +37,14 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
 
   Future<_PayBundle> _load() async {
     final uid = supabaseClient.auth.currentUser!.id;
-    final repo = PaymentRepository();
-    final ledger = await repo.getPaymentLedger(studentId: uid);
-    final schedule = await repo.getPaymentSchedule(studentId: uid);
-    final settings = await repo.getPaymentSettings();
+    final ledger = await _paymentRepo.getPaymentLedger(studentId: uid);
+    final schedule = await _paymentRepo.getPaymentSchedule(studentId: uid);
+    final settings = await _paymentRepo.getPaymentSettings();
 
     final courseIds = schedule.map((e) => e.courseId).toSet().toList();
     var advance = 0.0;
     for (final cid in courseIds) {
-      final b = await repo.getAdvanceBalance(studentId: uid, courseId: cid);
+      final b = await _paymentRepo.getAdvanceBalance(studentId: uid, courseId: cid);
       advance += b?.balance ?? 0;
     }
     return _PayBundle(
@@ -44,6 +53,79 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
       settings: settings,
       advanceAmount: double.parse(advance.toStringAsFixed(2)),
     );
+  }
+
+  Future<void> _showVoucher(PaymentLedgerModel p) async {
+    try {
+      final student = await _studentRepo.getStudentById(p.studentId);
+      final course = await _courseRepo.getCourseById(p.courseId);
+      final pm = PaymentModel(
+        id: p.id,
+        voucherNo: p.voucherNo,
+        studentId: p.studentId,
+        courseId: p.courseId,
+        forMonth: p.forMonth ?? DateTime.now(),
+        amount: p.amountPaid,
+        subtotal: p.amountDue,
+        discount: p.discountAmount,
+        paymentMethod: PaymentMethod.fromJson(p.paymentMethod),
+        status: p.status == LedgerPaymentStatus.partial
+            ? PaymentStatus.partial
+            : PaymentStatus.paid,
+        note: p.note,
+        paidAt: p.paidAt,
+        createdBy: p.createdBy,
+      );
+      final pdfBytes = await _pdfService.generateVoucherPdf(
+        pm,
+        student,
+        course,
+        serviceName: p.paymentTypeCode,
+      );
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: Text('ভাউচার দেখুন', style: GoogleFonts.hindSiliguri()),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await Printing.layoutPdf(
+                    onLayout: (_) async => pdfBytes,
+                    name: 'RCC-${p.voucherNo}.pdf',
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: Text('শেয়ার করুন', style: GoogleFonts.hindSiliguri()),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      files: [
+                        XFile.fromData(
+                          pdfBytes,
+                          mimeType: 'application/pdf',
+                          name: 'RCC-${p.voucherNo}.pdf',
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
   }
 
   @override
@@ -163,6 +245,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
                       '${p.paymentTypeCode} · ${p.voucherNo} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
                       style: GoogleFonts.nunito(fontSize: 12),
                     ),
+                    onTap: () => _showVoucher(p),
                     trailing: Text(
                       p.status.name,
                       style: GoogleFonts.nunito(

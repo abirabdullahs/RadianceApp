@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/pdf_service.dart';
+import '../../../../core/services/payment_due_edge_service.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../students/repositories/student_repository.dart';
 import '../repositories/payment_repository.dart';
@@ -31,4 +32,8 @@ StudentRepository studentRepositoryForPayments(StudentRepositoryForPaymentsRef r
 
 final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(repository: ref.read(paymentRepositoryProvider));
+});
+
+final paymentDueEdgeServiceProvider = Provider<PaymentDueEdgeService>((ref) {
+  return PaymentDueEdgeService();
 });

@@ -92,6 +92,41 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
 
+  Future<void> _runGenerateDues() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      helpText: 'যে মাসের Due generate করবেন',
+    );
+    if (picked == null || !mounted) return;
+    final month = DateTime(picked.year, picked.month, 1);
+    try {
+      final out = await ref.read(paymentDueEdgeServiceProvider).generateMonthlyDues(
+            month: month,
+            force: false,
+          );
+      ref.invalidate(filteredDuesEnrichedProvider);
+      ref.invalidate(filteredPaymentsProvider);
+      if (!mounted) return;
+      final affected = ((out?['result'] as Map?)?['affected'] ?? 0).toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Due generation complete. affected: $affected',
+            style: GoogleFonts.hindSiliguri(),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +144,11 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
     return AdminResponsiveScaffold(
       title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
       actions: [
+        IconButton(
+          tooltip: 'Generate Monthly Dues',
+          onPressed: _runGenerateDues,
+          icon: const Icon(Icons.event_repeat),
+        ),
         IconButton(
           tooltip: 'SMS templates',
           onPressed: () => context.push('/admin/payments/sms-templates'),
@@ -514,6 +554,42 @@ class _DuesTab extends ConsumerWidget {
     }
   }
 
+  Future<void> _sendBulkReminder(
+    BuildContext context,
+    WidgetRef ref,
+    List<_DueRow> rows,
+  ) async {
+    if (rows.isEmpty) return;
+    var sent = 0;
+    for (final r in rows) {
+      if (r.studentPhone.isEmpty) continue;
+      final d = r.due;
+      final amount = d.remainingAmount > 0 ? d.remainingAmount : d.amount;
+      final monthLabel =
+          d.forMonth == null ? 'এই' : DateFormat.yMMMM().format(d.forMonth!);
+      try {
+        await ref.read(smsServiceProvider).notifyDueReminder(
+              phone: r.studentPhone,
+              studentName: r.studentName,
+              monthLabel: monthLabel,
+              feeTypeLabel: d.paymentTypeCode,
+              amountLabel: amount.toStringAsFixed(0),
+            );
+        sent++;
+      } catch (_) {}
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bulk reminder queued: $sent/${rows.length}',
+            style: GoogleFonts.hindSiliguri(),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(filteredDuesEnrichedProvider);
@@ -530,35 +606,54 @@ class _DuesTab extends ConsumerWidget {
             ref.invalidate(filteredDuesEnrichedProvider);
             await ref.read(filteredDuesEnrichedProvider.future);
           },
-          child: ListView.builder(
-            itemCount: rows.length,
-            itemBuilder: (context, i) {
-              final r = rows[i];
-              final d = r.due;
-              return ListTile(
-                title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
-                subtitle: Text(
-                  '${r.courseName} · ${d.forMonth == null ? '—' : DateFormat.yMMMM().format(d.forMonth!)} · ${d.status.name}',
-                  style: GoogleFonts.nunito(fontSize: 12),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+          child: ListView(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
                   children: [
-                    Text(
-                      fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
+                    Expanded(
+                      child: Text(
+                        'Total due: ${fmt.format(rows.fold<double>(0, (a, r) => a + (r.due.remainingAmount > 0 ? r.due.remainingAmount : r.due.amount)))}',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                      ),
                     ),
-                    IconButton(
-                      tooltip: 'SMS reminder',
-                      icon: const Icon(Icons.sms_outlined),
-                      onPressed: r.studentPhone.isEmpty
-                          ? null
-                          : () => _sendReminder(context, ref, r),
+                    TextButton.icon(
+                      onPressed: () => _sendBulkReminder(context, ref, rows),
+                      icon: const Icon(Icons.sms),
+                      label: Text('Bulk SMS', style: GoogleFonts.hindSiliguri()),
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              ...List.generate(rows.length, (i) {
+                final r = rows[i];
+                final d = r.due;
+                return ListTile(
+                  title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
+                  subtitle: Text(
+                    '${r.courseName} · ${d.forMonth == null ? '—' : DateFormat.yMMMM().format(d.forMonth!)} · ${d.status.name}',
+                    style: GoogleFonts.nunito(fontSize: 12),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        tooltip: 'SMS reminder',
+                        icon: const Icon(Icons.sms_outlined),
+                        onPressed: r.studentPhone.isEmpty
+                            ? null
+                            : () => _sendReminder(context, ref, r),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
           ),
         );
       },
