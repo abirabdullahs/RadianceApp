@@ -43,6 +43,36 @@ app.*.map.json
 *firebase-adminsdk*.json
 *-adminsdk-*.json
 secrets-fcm.env
+service-account*.json
+*service-account*.json
+google-services-dev.json
+GoogleService-Info-Dev.plist
+
+# Env / secret files
+.env
+.env.*
+!.env.example
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+
+# Supabase local/state
+supabase/.temp/
+supabase/.branches/
+supabase/.cache/
+supabase/config.local.toml
+
+# Cursor/IDE local state
+.cursor/sessions/
+.cursor/metrics/
+.cursor/logs/
+.cursor/*.log
 
 # Android Studio will place build artifacts here
 /android/app/debug
