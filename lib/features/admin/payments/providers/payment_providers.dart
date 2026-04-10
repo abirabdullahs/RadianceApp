@@ -1,9 +1,11 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/pdf_service.dart';
 import '../../../../core/services/sms_service.dart';
 import '../../students/repositories/student_repository.dart';
 import '../repositories/payment_repository.dart';
+import '../services/payment_service.dart';
 
 part 'payment_providers.g.dart';
 
@@ -26,3 +28,7 @@ SmsService smsService(SmsServiceRef ref) {
 StudentRepository studentRepositoryForPayments(StudentRepositoryForPaymentsRef ref) {
   return StudentRepository();
 }
+
+final paymentServiceProvider = Provider<PaymentService>((ref) {
+  return PaymentService(repository: ref.read(paymentRepositoryProvider));
+});

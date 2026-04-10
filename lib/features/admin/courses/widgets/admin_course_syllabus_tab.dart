@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/theme.dart';
@@ -149,6 +152,7 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 TextField(
                   controller: title,
@@ -158,10 +162,63 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
                 TextField(
                   controller: content,
                   decoration: const InputDecoration(
-                    labelText: 'মার্কডাউন বিষয়বস্তু',
+                    labelText: 'মার্কডাউন + LaTeX',
+                    hintText: r'উদাহরণ: $x^2$ বা $$\int_0^1 x\,dx$$',
                     alignLabelWithHint: true,
                   ),
                   maxLines: 8,
+                  onChanged: (_) => setLocal(() {}),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'লাইভ প্রিভিউ',
+                  style: GoogleFonts.hindSiliguri(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(ctx).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
+                    color: Theme.of(ctx).colorScheme.surfaceContainerLowest,
+                  ),
+                  child: content.text.trim().isEmpty
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'মার্কডাউন লিখলে এখানে প্রিভিউ দেখাবে।',
+                            style: GoogleFonts.hindSiliguri(
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: MarkdownBody(
+                            data: _safePreviewMarkdown(content.text),
+                            selectable: true,
+                            styleSheet: _lecturePreviewStyle(ctx),
+                            extensionSet: md.ExtensionSet(
+                              md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+                              <md.InlineSyntax>[LatexInlineSyntax()],
+                            ),
+                            blockSyntaxes: <md.BlockSyntax>[LatexBlockSyntax()],
+                            builders: <String, MarkdownElementBuilder>{
+                              'latex': LatexElementBuilder(),
+                            },
+                            onTapLink: (text, href, title) async {
+                              if (href == null || href.isEmpty) return;
+                              final u = Uri.tryParse(href);
+                              if (u != null && await canLaunchUrl(u)) {
+                                await launchUrl(u, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -203,6 +260,150 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
       ),
     );
     await _refresh();
+  }
+
+  Future<void> _editLecture(NoteModel note) async {
+    final title = TextEditingController(text: note.title);
+    final content = TextEditingController(text: note.content ?? '');
+    final video = TextEditingController(text: note.fileUrl ?? '');
+    var published = note.isPublished ?? true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('লেকচার সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: title,
+                  decoration: const InputDecoration(labelText: 'শিরোনাম *'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: content,
+                  decoration: const InputDecoration(
+                    labelText: 'মার্কডাউন + LaTeX',
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 8,
+                  onChanged: (_) => setLocal(() {}),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'লাইভ প্রিভিউ',
+                  style: GoogleFonts.hindSiliguri(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(ctx).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Theme.of(ctx).colorScheme.outlineVariant),
+                    color: Theme.of(ctx).colorScheme.surfaceContainerLowest,
+                  ),
+                  child: content.text.trim().isEmpty
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'মার্কডাউন লিখলে এখানে প্রিভিউ দেখাবে।',
+                            style: GoogleFonts.hindSiliguri(
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          child: MarkdownBody(
+                            data: _safePreviewMarkdown(content.text),
+                            selectable: true,
+                            styleSheet: _lecturePreviewStyle(ctx),
+                            extensionSet: md.ExtensionSet(
+                              md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+                              <md.InlineSyntax>[LatexInlineSyntax()],
+                            ),
+                            blockSyntaxes: <md.BlockSyntax>[LatexBlockSyntax()],
+                            builders: <String, MarkdownElementBuilder>{
+                              'latex': LatexElementBuilder(),
+                            },
+                            onTapLink: (text, href, title) async {
+                              if (href == null || href.isEmpty) return;
+                              final u = Uri.tryParse(href);
+                              if (u != null && await canLaunchUrl(u)) {
+                                await launchUrl(u, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: video,
+                  decoration: const InputDecoration(
+                    labelText: 'ভিডিও লিংক (ঐচ্ছিক)',
+                  ),
+                ),
+                SwitchListTile(
+                  title: Text('প্রকাশিত', style: GoogleFonts.hindSiliguri(fontSize: 14)),
+                  value: published,
+                  onChanged: (v) => setLocal(() => published = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('সংরক্ষণ')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    if (title.text.trim().isEmpty) return;
+    await _repo.updateNote(
+      note.copyWith(
+        title: title.text.trim(),
+        content: content.text.trim().isEmpty ? null : content.text.trim(),
+        fileUrl: video.text.trim().isEmpty ? null : video.text.trim(),
+        isPublished: published,
+      ),
+    );
+    await _refresh();
+  }
+
+  MarkdownStyleSheet _lecturePreviewStyle(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = MarkdownStyleSheet.fromTheme(Theme.of(context));
+    return base.copyWith(
+      p: GoogleFonts.hindSiliguri(fontSize: 14, height: 1.5, color: scheme.onSurface),
+      h1: GoogleFonts.hindSiliguri(fontSize: 20, fontWeight: FontWeight.w700),
+      h2: GoogleFonts.hindSiliguri(fontSize: 18, fontWeight: FontWeight.w700),
+      h3: GoogleFonts.hindSiliguri(fontSize: 16, fontWeight: FontWeight.w700),
+      listBullet: GoogleFonts.hindSiliguri(fontSize: 14, color: scheme.onSurface),
+      code: GoogleFonts.nunito(fontSize: 12, color: scheme.primary),
+      blockquote: GoogleFonts.hindSiliguri(
+        fontSize: 13,
+        fontStyle: FontStyle.italic,
+        color: scheme.onSurfaceVariant,
+      ),
+      a: GoogleFonts.hindSiliguri(
+        fontSize: 14,
+        color: scheme.primary,
+        decoration: TextDecoration.underline,
+      ),
+    );
+  }
+
+  String _safePreviewMarkdown(String source) {
+    const max = 8000;
+    if (source.length <= max) return source;
+    return '${source.substring(0, max)}\n\n---\nPreview truncated for performance...';
   }
 
   Future<void> _addSuggestion(String chapterId) async {
@@ -410,6 +611,10 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
                     icon: const Icon(Icons.ondemand_video, size: 20),
                     onPressed: () => _openUrl(n.fileUrl),
                   ),
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  onPressed: () => _editLecture(n),
+                ),
                 IconButton(
                   icon: Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
                   onPressed: () async {

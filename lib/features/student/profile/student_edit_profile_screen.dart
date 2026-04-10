@@ -217,6 +217,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
           title: Text('প্রোফাইল', style: GoogleFonts.hindSiliguri()),
+          actions: const [AppBarDrawerAction()],
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
@@ -230,6 +231,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
           title: Text('প্রোফাইল', style: GoogleFonts.hindSiliguri()),
+          actions: const [AppBarDrawerAction()],
         ),
         body: const Center(child: Text('লগইন প্রয়োজন')),
       );
@@ -247,6 +249,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
           'প্রোফাইল সম্পাদনা',
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
+        actions: const [AppBarDrawerAction()],
       ),
       body: Stack(
         children: [

@@ -96,4 +96,45 @@ class NotificationsRepository {
     await _client.from(kTableNotifications).insert(inserts);
     return inserts.length;
   }
+
+  /// Admin: notify all active enrolled students about exam schedule.
+  Future<int> sendExamScheduleNotice({
+    required String courseId,
+    required String examId,
+    required String examTitle,
+    required String examMode,
+    required DateTime startTime,
+  }) async {
+    final rows = await _client
+        .from(kTableEnrollments)
+        .select('student_id')
+        .eq('course_id', courseId)
+        .eq('status', 'active');
+    final list = rows as List<dynamic>;
+    if (list.isEmpty) return 0;
+
+    final local = startTime.toLocal();
+    final date =
+        '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
+    final time =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    final modeLabel = examMode == 'offline' ? 'অফলাইন' : 'অনলাইন';
+
+    final inserts = <Map<String, dynamic>>[];
+    for (final raw in list) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final sid = m['student_id'] as String?;
+      if (sid == null) continue;
+      inserts.add(<String, dynamic>{
+        'user_id': sid,
+        'title': 'পরীক্ষার সময়সূচী',
+        'body': '$examTitle ($modeLabel) — $date, $time',
+        'type': 'exam',
+        'action_route': '/student/exams/$examId/take',
+      });
+    }
+    if (inserts.isEmpty) return 0;
+    await _client.from(kTableNotifications).insert(inserts);
+    return inserts.length;
+  }
 }

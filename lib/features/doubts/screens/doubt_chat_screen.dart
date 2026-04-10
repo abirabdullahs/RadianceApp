@@ -170,7 +170,10 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: title,
-        actions: actions,
+        actions: [
+          ...(actions ?? const <Widget>[]),
+          const AppBarDrawerAction(),
+        ],
       ),
       floatingActionButton: floatingActionButton,
       body: body,

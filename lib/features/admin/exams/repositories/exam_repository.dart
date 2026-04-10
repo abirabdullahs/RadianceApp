@@ -31,6 +31,8 @@ class ExamRepository {
   Future<ExamModel> createExam({
     required String courseId,
     String? subjectId,
+    List<String> chapterIds = const [],
+    String examMode = 'online',
     required String title,
     String? instructions,
     required int durationMinutes,
@@ -50,6 +52,8 @@ class ExamRepository {
       'id': id,
       'course_id': courseId,
       'subject_id': subjectId,
+      'chapter_ids': chapterIds,
+      'exam_mode': examMode,
       'title': title,
       'instructions': instructions,
       'duration_minutes': durationMinutes,
@@ -76,6 +80,8 @@ class ExamRepository {
         .update({
           'course_id': exam.courseId,
           'subject_id': exam.subjectId,
+          'chapter_ids': exam.chapterIds,
+          'exam_mode': exam.examMode,
           'title': exam.title,
           'instructions': exam.instructions,
           'duration_minutes': exam.durationMinutes,
@@ -109,6 +115,7 @@ class ExamRepository {
   Future<QuestionModel> addQuestion({
     required String examId,
     required String questionText,
+    String? imageUrl,
     required String optionA,
     required String optionB,
     required String optionC,
@@ -123,6 +130,7 @@ class ExamRepository {
       'id': id,
       'exam_id': examId,
       'question_text': questionText,
+      'image_url': imageUrl,
       'option_a': optionA,
       'option_b': optionB,
       'option_c': optionC,

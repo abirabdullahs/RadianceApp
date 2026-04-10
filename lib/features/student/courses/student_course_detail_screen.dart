@@ -53,6 +53,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
               leading: const AppBarDrawerLeading(),
               automaticallyImplyLeading: false,
               leadingWidth: leadingWidthForDrawer(context),
+              actions: const [AppBarDrawerAction()],
             ),
             body: const Center(child: CircularProgressIndicator()),
           );
@@ -65,6 +66,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
             automaticallyImplyLeading: false,
             leadingWidth: leadingWidthForDrawer(context),
             title: Text(b.course.name, style: GoogleFonts.hindSiliguri()),
+            actions: const [AppBarDrawerAction()],
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),

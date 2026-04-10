@@ -141,7 +141,68 @@ class ResultCalculator {
     await NotificationEdgeService().invokeSendNotification(
       userIds: sidList.toSet().toList(),
       title: 'ফলাফল প্রকাশিত',
-      body: '$examTitle — আপনার ফলাফল দেখতে ট্যাপ করুন।',
+      body: '$examTitle — রেজাল্ট ও লিডারবোর্ড দেখতে ট্যাপ করুন।',
+      actionRoute: '/student/results',
+      type: 'result',
+    );
+  }
+
+  /// Offline exam result publish: admin provides per-student obtained marks.
+  Future<void> publishOfflineResults({
+    required String examId,
+    required double totalMarks,
+    required List<OfflineResultInput> inputs,
+  }) async {
+    final examRow = await _client
+        .from(kTableExams)
+        .select('id, title, pass_marks')
+        .eq('id', examId)
+        .maybeSingle();
+    if (examRow == null) throw StateError('Exam not found: $examId');
+    final exam = Map<String, dynamic>.from(examRow as Map);
+    final examTitle = exam['title'] as String? ?? 'পরীক্ষা';
+    final passMarks = _toDouble(exam['pass_marks'], fallback: totalMarks * 0.4);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    final payload = <Map<String, dynamic>>[];
+    final studentIds = <String>[];
+    for (final input in inputs) {
+      final score = input.obtainedMarks.clamp(0, totalMarks).toDouble();
+      final percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0.0;
+      payload.add(<String, dynamic>{
+        'exam_id': examId,
+        'student_id': input.studentId,
+        'score': score,
+        'total_marks': totalMarks,
+        'percentage': double.parse(percentage.toStringAsFixed(2)),
+        'grade': _gradeFromPercentage(percentage),
+        'is_passed': score >= passMarks,
+        'published_at': nowIso,
+      });
+      studentIds.add(input.studentId);
+    }
+    if (payload.isNotEmpty) {
+      await _client.from(kTableResults).upsert(payload, onConflict: 'exam_id,student_id');
+    }
+
+    await _client.rpc<void>(
+      'calculate_exam_ranks',
+      params: <String, dynamic>{'p_exam_id': examId},
+    );
+    await _client.from(kTableExams).update(<String, dynamic>{
+      'status': 'result_published',
+      'updated_at': nowIso,
+    }).eq('id', examId);
+
+    await _queueResultNotifications(
+      examId: examId,
+      examTitle: examTitle,
+      studentIds: studentIds,
+    );
+    await NotificationEdgeService().invokeSendNotification(
+      userIds: studentIds.toSet().toList(),
+      title: 'ফলাফল প্রকাশিত',
+      body: '$examTitle — রেজাল্ট ও লিডারবোর্ড দেখতে ট্যাপ করুন।',
       actionRoute: '/student/results',
       type: 'result',
     );
@@ -159,7 +220,7 @@ class ResultCalculator {
       rows.add(<String, dynamic>{
         'user_id': uid,
         'title': 'ফলাফল প্রকাশিত',
-        'body': '$examTitle — আপনার ফলাফল দেখতে ট্যাপ করুন।',
+        'body': '$examTitle — রেজাল্ট ও লিডারবোর্ড দেখতে ট্যাপ করুন।',
         'type': 'result',
         'action_route': '/student/results',
         'is_read': false,
@@ -194,4 +255,14 @@ class ResultCalculator {
     if (percentage >= 40) return 'D';
     return 'F';
   }
+}
+
+class OfflineResultInput {
+  const OfflineResultInput({
+    required this.studentId,
+    required this.obtainedMarks,
+  });
+
+  final String studentId;
+  final double obtainedMarks;
 }

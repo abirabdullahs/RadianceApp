@@ -112,6 +112,7 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
         actions: [
+          const AppBarDrawerAction(),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => setState(() => _future = _load()),

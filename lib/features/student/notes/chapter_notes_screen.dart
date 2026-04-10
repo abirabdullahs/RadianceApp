@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme.dart';
@@ -19,6 +22,7 @@ class NotesScreen extends StatefulWidget {
 
 class _NotesScreenState extends State<NotesScreen> {
   late Future<List<Map<String, dynamic>>> _future;
+  final DateFormat _dateFormat = DateFormat('dd MMM yyyy');
 
   @override
   void initState() {
@@ -83,6 +87,7 @@ class _NotesScreenState extends State<NotesScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('নোট ও লেকচার', style: GoogleFonts.hindSiliguri()),
+        actions: const [AppBarDrawerAction()],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,
@@ -137,6 +142,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   ),
                   ...lectures.map((n) => _LectureCard(
                         note: n,
+                        dateText: _formatNoteDate(n),
                         onTap: () => _openDetail(context, n),
                       )),
                   if (others.isNotEmpty) const SizedBox(height: 16),
@@ -160,6 +166,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   ),
                   ...others.map((n) => _OtherNoteTile(
                         note: n,
+                        dateText: _formatNoteDate(n),
                         onTap: () => _openDetail(context, n),
                       )),
                 ],
@@ -181,14 +188,32 @@ class _NotesScreenState extends State<NotesScreen> {
       ),
     );
   }
+
+  String _formatNoteDate(Map<String, dynamic> note) {
+    final raw = note['updated_at'] ?? note['created_at'];
+    if (raw == null) return '';
+    DateTime? value;
+    if (raw is DateTime) {
+      value = raw;
+    } else if (raw is String) {
+      value = DateTime.tryParse(raw);
+    }
+    if (value == null) return '';
+    return _dateFormat.format(value.toLocal());
+  }
 }
 
 /// Distinct UI for admin-created `lecture` notes (markdown + optional video).
 class _LectureCard extends StatelessWidget {
-  const _LectureCard({required this.note, required this.onTap});
+  const _LectureCard({
+    required this.note,
+    required this.onTap,
+    required this.dateText,
+  });
 
   final Map<String, dynamic> note;
   final VoidCallback onTap;
+  final String dateText;
 
   @override
   Widget build(BuildContext context) {
@@ -273,6 +298,17 @@ class _LectureCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (dateText.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  dateText,
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -290,10 +326,15 @@ class _LectureCard extends StatelessWidget {
 }
 
 class _OtherNoteTile extends StatelessWidget {
-  const _OtherNoteTile({required this.note, required this.onTap});
+  const _OtherNoteTile({
+    required this.note,
+    required this.onTap,
+    required this.dateText,
+  });
 
   final Map<String, dynamic> note;
   final VoidCallback onTap;
+  final String dateText;
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +365,10 @@ class _OtherNoteTile extends StatelessWidget {
       child: ListTile(
         leading: Icon(icon, color: scheme.primary),
         title: Text(title, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-        subtitle: Text(type, style: GoogleFonts.nunito(fontSize: 12)),
+        subtitle: Text(
+          dateText.isEmpty ? type : '$type · $dateText',
+          style: GoogleFonts.nunito(fontSize: 12),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
@@ -363,6 +407,7 @@ class _NoteDetailScreen extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
+        actions: const [AppBarDrawerAction()],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -403,18 +448,7 @@ class _NoteDetailScreen extends StatelessWidget {
                 ),
               ),
             if (content != null && content.trim().isNotEmpty)
-              MarkdownBody(
-                data: content,
-                selectable: true,
-                styleSheet: markdownStyle,
-                onTapLink: (text, href, title) async {
-                  if (href == null || href.isEmpty) return;
-                  final u = Uri.tryParse(href);
-                  if (u != null && await canLaunchUrl(u)) {
-                    await launchUrl(u, mode: LaunchMode.externalApplication);
-                  }
-                },
-              )
+              _buildSafeMarkdown(content, markdownStyle)
             else if (type == 'text' || type == 'lecture')
               Text(
                 'কোনো লিখিত বিষয়বস্তু নেই।',
@@ -458,6 +492,37 @@ class _NoteDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSafeMarkdown(String content, MarkdownStyleSheet markdownStyle) {
+    const softLimit = 12000;
+    final trimmed = content.trim();
+    if (trimmed.length > softLimit) {
+      return SelectableText(
+        '${trimmed.substring(0, softLimit)}\n\n---\nContent trimmed for safe rendering. Open full content in smaller chunks.',
+        style: markdownStyle.p,
+      );
+    }
+    return MarkdownBody(
+      data: trimmed,
+      selectable: true,
+      styleSheet: markdownStyle,
+      extensionSet: md.ExtensionSet(
+        md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+        <md.InlineSyntax>[LatexInlineSyntax()],
+      ),
+      blockSyntaxes: <md.BlockSyntax>[LatexBlockSyntax()],
+      builders: <String, MarkdownElementBuilder>{
+        'latex': LatexElementBuilder(),
+      },
+      onTapLink: (text, href, title) async {
+        if (href == null || href.isEmpty) return;
+        final u = Uri.tryParse(href);
+        if (u != null && await canLaunchUrl(u)) {
+          await launchUrl(u, mode: LaunchMode.externalApplication);
+        }
+      },
     );
   }
 }

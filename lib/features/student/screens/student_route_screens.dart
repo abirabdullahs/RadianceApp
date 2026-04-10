@@ -16,6 +16,7 @@ class QBankScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('প্রশ্ন ব্যাংক', style: GoogleFonts.hindSiliguri()),
+        actions: const [AppBarDrawerAction()],
       ),
       body: Center(
         child: Text(

@@ -7,7 +7,7 @@ alwaysApply: true
 
 **Keep this rule updated** after meaningful architecture, route, or dependency changes. Bump **Last updated** below.
 
-**Last updated:** 2026-04-10 (admin `AdminResponsiveScaffold`, `.cursor/rules` → `.mdc`)
+**Last updated:** 2026-04-10 (payment management sections 1-8: schema + data layer + orchestration + multi-fee UI + ledger hub/dashboard + discount/reports + payment settings wired to add-payment defaults/methods, uniform right-top drawer action, exams/results phase-2+, student_id RCC+last9)
 
 ---
 
@@ -81,8 +81,38 @@ Product / DB docs: `plan/`. Schema: `supabase/migrations/`.
 - **Bengali copy** in UI where specified — use `GoogleFonts.hindSiliguri()`; Latin/numbers often `GoogleFonts.nunito()`.
 - **Code & comments:** English.
 - **Theme:** `lib/app/theme.dart` — primary `0xFF1A3C6E`, accent `0xFFF5A623`.
-- **AppBar + drawer:** use `leading: const AppBarDrawerLeading()` and `leadingWidth: leadingWidthForDrawer(context)` from the same feature’s drawer export — **do not** pass a `context` that is not under the `Scaffold` (e.g. State’s context without scaffold ancestor) or the menu button breaks.
+- **AppBar + drawer (current standard):**
+  - Left/top (`leading`) = **back only** via `AppBarDrawerLeading` (if stack can pop).
+  - Right/top (`actions`) = drawer menu via `const AppBarDrawerAction()`.
+  - Keep `leadingWidth: leadingWidthForDrawer(context)`; do not pass a non-scaffold context to drawer openers.
 - **Admin shell (responsive):** use **`AdminResponsiveScaffold`** (`lib/features/admin/widgets/admin_responsive_scaffold.dart`) for admin screens — **narrow** (under `kAdminWideBreakpoint`, 900px): drawer + app bar; **wide**: permanent side nav + inner scaffold. Use **`constrainBodyWidth: false`** for full-bleed flows (e.g. attendance taking, chats). Optional: `toolbarHeight`, `resizeToAvoidBottomInset`, `bottom` (e.g. `TabBar`). **`AdminDrawer`** remains for narrow layout only (provided by the scaffold, not duplicated per screen).
+
+---
+
+## Exams & results (current behavior)
+
+- **Exam creation:** admin can create `online` / `offline` exam with:
+  - `course_id`, `subject_id`, multi `chapter_ids`
+  - schedule (`start_time`, `end_time`)
+  - online-only marks config (`duration_minutes`, total/pass/negative).
+- **Question authoring:** markdown + LaTeX + image URL preview; JSON question import inserts only question rows.
+- **Student taking rules:**
+  - `online + live` => timed attempt, auto-submit on timeout + manual submit.
+  - non-live online => practice-style flow.
+  - offline => schedule/info only (no MCQ taking).
+- **Result publishing:**
+  - online => admin publish triggers `ResultCalculator.calculateResults`.
+  - offline => admin manual entry / JSON upload + total marks (`Option A`) triggers `publishOfflineResults`.
+  - both flows set exam status `result_published`, rank via `calculate_exam_ranks`, notify students.
+- **Leaderboard:** student results page lists exam results; tap exam opens leaderboard with “your rank” + full list.
+
+---
+
+## Student ID policy (current)
+
+- Canonical student ID format: **`RCC` + last 9 digits of phone**.
+- Enforced in DB via trigger/function migration (`20260410143000_student_id_rcc_last9_and_results_leaderboard_rls.sql`).
+- Keep app-side assumptions aligned with this rule (do not reintroduce year-based IDs).
 
 ---
 
@@ -102,7 +132,7 @@ Product / DB docs: `plan/`. Schema: `supabase/migrations/`.
 | FCM / Edge | `NotificationEdgeService`, `supabase/functions/send-notification` |
 | Doubts | `DoubtChatScreen` (`DoubtChatShell`), `StaffDoubtInboxScreen`, stream empty-guard + refetch after send |
 | Community | `community_chat_screen.dart` (`useAdminShell` for admin course chats); RLS `20260409270000_community_users_rls_and_storage.sql` |
-| Admin payments / exams | hubs, `ResultCalculator`, publish + notifications |
+| Exams / results | `admin_exam_editor_screen.dart`, `admin_exam_detail_screen.dart`, `ResultCalculator`, `student_results_screen.dart`, migrations `20260410130000_*`, `20260410143000_*` |
 
 ---
 

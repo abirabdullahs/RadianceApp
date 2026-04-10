@@ -7,8 +7,9 @@ import 'package:printing/printing.dart';
 
 import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
-import '../../../../shared/models/payment_due_model.dart';
+import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_model.dart';
+import '../../../../shared/models/payment_schedule_model.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../../courses/repositories/course_repository.dart';
 import '../../students/repositories/student_repository.dart';
@@ -27,9 +28,9 @@ final paymentHubFiltersProvider =
     StateProvider<PaymentHubFilters>((ref) => const PaymentHubFilters());
 
 final filteredPaymentsProvider =
-    FutureProvider.autoDispose<List<PaymentModel>>((ref) async {
+    FutureProvider.autoDispose<List<PaymentLedgerModel>>((ref) async {
   final f = ref.watch(paymentHubFiltersProvider);
-  return ref.read(paymentRepositoryProvider).getPayments(
+  return ref.read(paymentRepositoryProvider).getPaymentLedger(
         courseId: f.courseId,
         month: f.month,
       );
@@ -38,11 +39,12 @@ final filteredPaymentsProvider =
 final filteredDuesEnrichedProvider =
     FutureProvider.autoDispose<List<_DueRow>>((ref) async {
   final f = ref.watch(paymentHubFiltersProvider);
-  final dues = await ref.read(paymentRepositoryProvider).getDues(
+  final dues = await ref.read(paymentRepositoryProvider).getPaymentSchedule(
         courseId: f.courseId,
         month: f.month,
+        onlyOpen: true,
       );
-  final open = dues.where((d) => d.status == DueStatus.due).toList();
+  final open = dues;
   final sRepo = StudentRepository();
   final cRepo = CourseRepository();
   final rows = <_DueRow>[];
@@ -67,7 +69,7 @@ class _DueRow {
     required this.courseName,
   });
 
-  final PaymentDueModel due;
+  final PaymentScheduleModel due;
   final String studentName;
   final String courseName;
 }
@@ -101,6 +103,23 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
   Widget build(BuildContext context) {
     return AdminResponsiveScaffold(
       title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+      actions: [
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: () => context.push('/admin/payments/settings'),
+          icon: const Icon(Icons.settings_outlined),
+        ),
+        IconButton(
+          tooltip: 'Reports',
+          onPressed: () => context.push('/admin/payments/reports'),
+          icon: const Icon(Icons.assessment_outlined),
+        ),
+        IconButton(
+          tooltip: 'Discount সেটিংস',
+          onPressed: () => context.push('/admin/payments/discounts'),
+          icon: const Icon(Icons.discount_outlined),
+        ),
+      ],
       bottom: TabBar(
         controller: _tabs,
         tabs: [
@@ -324,71 +343,39 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     super.dispose();
   }
 
-  Future<void> _printPayment(PaymentModel p) async {
+  Future<void> _printPayment(PaymentLedgerModel p) async {
     try {
       final student =
           await ref.read(studentRepositoryForPaymentsProvider).getStudentById(p.studentId);
       final course = await ref.read(courseRepositoryProvider).getCourseById(p.courseId);
-      String? serviceName;
-      if (p.feeServiceId != null) {
-        final svcs = await ref.read(paymentRepositoryProvider).listFeeServices();
-        for (final s in svcs) {
-          if (s.id == p.feeServiceId) {
-            serviceName = s.name;
-            break;
-          }
-        }
-      }
+      final pm = PaymentModel(
+        id: p.id,
+        voucherNo: p.voucherNo,
+        studentId: p.studentId,
+        courseId: p.courseId,
+        forMonth: p.forMonth ?? DateTime.now(),
+        amount: p.amountPaid,
+        subtotal: p.amountDue,
+        discount: p.discountAmount,
+        paymentMethod: PaymentMethod.fromJson(p.paymentMethod),
+        status: p.status == LedgerPaymentStatus.partial
+            ? PaymentStatus.partial
+            : PaymentStatus.paid,
+        note: p.note,
+        paidAt: p.paidAt,
+        createdBy: p.createdBy,
+      );
       final pdfBytes = await ref.read(pdfServiceProvider).generateVoucherPdf(
-            p,
+            pm,
             student,
             course,
-            serviceName: serviceName,
+            serviceName: p.paymentTypeCode,
           );
       if (!mounted) return;
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
         name: 'RCC-${p.voucherNo}.pdf',
       );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
-        );
-      }
-    }
-  }
-
-  Future<void> _confirmDelete(PaymentModel p) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('মুছে ফেলবেন?', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
-        content: Text(
-          'ভাউচার ${p.voucherNo} — এই লেনদেন মুছে যাবে।',
-          style: GoogleFonts.hindSiliguri(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('বাতিল', style: GoogleFonts.hindSiliguri()),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('মুছুন', style: GoogleFonts.hindSiliguri()),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    try {
-      await ref.read(paymentRepositoryProvider).deletePayment(p.id);
-      ref.invalidate(filteredPaymentsProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -405,11 +392,7 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     final q = _voucherSearch.text.trim().toLowerCase();
     return async.when(
       data: (list) {
-        final filtered = q.isEmpty
-            ? list
-            : list
-                .where((p) => p.voucherNo.toLowerCase().contains(q))
-                .toList();
+        final filtered = q.isEmpty ? list : list.where((p) => p.voucherNo.toLowerCase().contains(q)).toList();
         if (list.isEmpty) {
           return Center(
             child: Text('কোনো পেমেন্ট নেই', style: GoogleFonts.hindSiliguri()),
@@ -423,7 +406,7 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                 controller: _voucherSearch,
                 decoration: InputDecoration(
                   labelText: 'ভাউচার নম্বর দিয়ে খুঁজুন',
-                  hintText: 'যেমন RCC-VCH-2026-0001',
+                  hintText: 'যেমন RCC-2026-0001',
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -464,37 +447,19 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                               style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              '${fmt.format(p.amount)} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
+                              '${p.paymentTypeCode} · ${fmt.format(p.amountPaid)} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
                               style: GoogleFonts.nunito(fontSize: 12),
                             ),
                             trailing: PopupMenuButton<String>(
                               onSelected: (v) async {
-                                if (v == 'edit') {
-                                  await context.push('/admin/payments/edit/${p.id}');
-                                  if (mounted) ref.invalidate(filteredPaymentsProvider);
-                                } else if (v == 'print') {
+                                if (v == 'print') {
                                   await _printPayment(p);
-                                } else if (v == 'delete') {
-                                  await _confirmDelete(p);
                                 }
                               },
                               itemBuilder: (ctx) => [
                                 PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('সম্পাদনা', style: GoogleFonts.hindSiliguri()),
-                                ),
-                                PopupMenuItem(
                                   value: 'print',
                                   child: Text('প্রিন্ট / PDF', style: GoogleFonts.hindSiliguri()),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text(
-                                    'মুছুন',
-                                    style: GoogleFonts.hindSiliguri(
-                                      color: Theme.of(ctx).colorScheme.error,
-                                    ),
-                                  ),
                                 ),
                               ],
                             ),
@@ -539,11 +504,11 @@ class _DuesTab extends ConsumerWidget {
               return ListTile(
                 title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
                 subtitle: Text(
-                  '${r.courseName} · ${DateFormat.yMMMM().format(d.forMonth)}',
+                  '${r.courseName} · ${d.forMonth == null ? '—' : DateFormat.yMMMM().format(d.forMonth!)} · ${d.status.name}',
                   style: GoogleFonts.nunito(fontSize: 12),
                 ),
                 trailing: Text(
-                  fmt.format(d.amount),
+                  fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
                   style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
                 ),
               );

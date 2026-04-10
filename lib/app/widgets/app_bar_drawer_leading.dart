@@ -15,30 +15,34 @@ class AppBarDrawerLeading extends StatelessWidget {
 
 /// বাম পাশে: [পিছনে] (যদি স্ট্যাক থাকে) + [মেনু]। ডান দিকে আলাদা মেনু বাটন লাগবে না।
 Widget appBarDrawerLeading(BuildContext context) {
-  final scaffoldState = Scaffold.maybeOf(context);
-  if (scaffoldState == null || !scaffoldState.hasDrawer) {
-    return const SizedBox.shrink();
-  }
   final canPop = context.canPop();
-  return Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      if (canPop)
-        IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: 'পিছনে',
-          onPressed: () => context.pop(),
-        ),
-      IconButton(
-        icon: const Icon(Icons.menu),
-        tooltip: 'মেনু',
-        onPressed: () => scaffoldState.openDrawer(),
-      ),
-    ],
+  if (!canPop) return const SizedBox.shrink();
+  return IconButton(
+    icon: const Icon(Icons.arrow_back),
+    tooltip: 'পিছনে',
+    onPressed: () => context.pop(),
   );
 }
 
 /// [AppBar.leadingWidth] — দুই আইকনের জন্য যথেষ্ট জায়গা।
 double leadingWidthForDrawer(BuildContext context) {
-  return context.canPop() ? 112 : 56;
+  return context.canPop() ? 56 : 0;
+}
+
+/// Use as right-side AppBar action to open drawer.
+class AppBarDrawerAction extends StatelessWidget {
+  const AppBarDrawerAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scaffoldState = Scaffold.maybeOf(context);
+    if (scaffoldState == null || !scaffoldState.hasDrawer) {
+      return const SizedBox.shrink();
+    }
+    return IconButton(
+      icon: const Icon(Icons.menu),
+      tooltip: 'মেনু',
+      onPressed: () => scaffoldState.openDrawer(),
+    );
+  }
 }

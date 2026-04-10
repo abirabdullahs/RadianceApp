@@ -63,14 +63,14 @@ class DashboardRepository {
     final monthEnd = DateTime(now.year, now.month + 1, 1);
 
     final monthPay = await _client
-        .from(kTablePayments)
-        .select('amount')
+        .from(kTablePaymentLedger)
+        .select('amount_paid')
         .gte('paid_at', monthStart.toUtc().toIso8601String())
         .lt('paid_at', monthEnd.toUtc().toIso8601String());
     var monthRevenue = 0.0;
     for (final e in monthPay as List<dynamic>) {
       final m = Map<String, dynamic>.from(e as Map);
-      final a = m['amount'];
+      final a = m['amount_paid'];
       monthRevenue += a is num ? a.toDouble() : double.tryParse('$a') ?? 0;
     }
 
@@ -79,7 +79,7 @@ class DashboardRepository {
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
     final todayPayRows = await _client
-        .from(kTablePayments)
+        .from(kTablePaymentLedger)
         .select('id')
         .gte('paid_at', startOfDay.toUtc().toIso8601String())
         .lt('paid_at', endOfDay.toUtc().toIso8601String());

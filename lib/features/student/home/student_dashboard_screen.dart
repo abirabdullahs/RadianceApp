@@ -76,6 +76,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: [
+          const AppBarDrawerAction(),
           const NotificationAppBarAction(),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -211,7 +212,7 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                   children: [
                     _MenuSquare(
                       icon: Icons.school_outlined,
-                      label: 'কোর্স',
+                      label: 'ক্লাসনোট',
                       onTap: () => context.push('/student/courses'),
                     ),
                     _MenuSquare(

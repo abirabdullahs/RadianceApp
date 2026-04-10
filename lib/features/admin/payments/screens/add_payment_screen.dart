@@ -10,12 +10,17 @@ import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/course_model.dart';
+import '../../../../shared/models/discount_rule_model.dart';
 import '../../../../shared/models/enrollment_model.dart';
-import '../../../../shared/models/fee_service_model.dart';
+import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_model.dart';
+import '../../../../shared/models/payment_settings_model.dart';
+import '../../../../shared/models/payment_type_model.dart';
+import '../../../../shared/models/student_discount_model.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../providers/payment_providers.dart';
+import '../services/payment_service.dart';
 
 /// Admin form: record a payment, PDF voucher, optional SMS log, share/print.
 /// [editingPaymentId] set → load existing row (edit).
@@ -36,6 +41,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   final _note = TextEditingController();
   final _monthDisplay = TextEditingController();
   final _paidDateDisplay = TextEditingController();
+  final _transactionRef = TextEditingController();
 
   Timer? _searchDebounce;
   List<UserModel> _studentSuggestions = [];
@@ -44,8 +50,9 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   List<CourseModel> _courseOptions = [];
   String? _selectedCourseId;
 
-  List<FeeServiceModel> _feeServices = [];
-  String? _selectedFeeServiceId;
+  List<PaymentTypeModel> _paymentTypes = [];
+  PaymentSettingsModel _paymentSettings = const PaymentSettingsModel();
+  final List<_FeeItemState> _feeItems = [];
 
   PaymentModel? _existingPayment;
   bool _loadingEdit = false;
@@ -66,35 +73,61 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     return null;
   }
 
-  FeeServiceModel? get _feeService {
-    final id = _selectedFeeServiceId;
-    if (id == null) return null;
-    for (final s in _feeServices) {
-      if (s.id == id) return s;
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
     _syncMonthDisplay();
     _syncPaidDateDisplay();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadFeeServices();
+      await _loadPaymentSettings();
+      await _loadPaymentTypes();
       if (widget.editingPaymentId != null) {
         await _loadPaymentForEdit(widget.editingPaymentId!);
       }
     });
   }
 
-  Future<void> _loadFeeServices() async {
+  Future<void> _loadPaymentSettings() async {
     try {
-      final list = await ref.read(paymentRepositoryProvider).listFeeServices();
+      final settings = await ref.read(paymentRepositoryProvider).getPaymentSettings();
       if (!mounted) return;
-      setState(() => _feeServices = list);
+      setState(() {
+        _paymentSettings = settings;
+        final allowed = _paymentSettings.allowedMethods();
+        if (!allowed.contains(_paymentMethod)) {
+          _paymentMethod = allowed.first;
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadPaymentTypes() async {
+    try {
+      final list = await ref.read(paymentRepositoryProvider).listPaymentTypes();
+      if (!mounted) return;
+      setState(() {
+        _paymentTypes = list;
+        if (_feeItems.isEmpty && _existingPayment == null && _paymentTypes.isNotEmpty) {
+          final firstType = _paymentTypes.first;
+          final defaultAmt = _paymentSettings.defaultAmountForCode(
+            firstType.code,
+            fallback: firstType.defaultAmount ?? 0,
+          );
+          _feeItems.add(
+            _FeeItemState(
+              paymentTypeId: firstType.id,
+              amountDueCtrl: TextEditingController(
+                text: defaultAmt.toStringAsFixed(2),
+              ),
+              amountPaidCtrl: TextEditingController(
+                text: defaultAmt.toStringAsFixed(2),
+              ),
+            ),
+          );
+        }
+      });
     } catch (_) {
-      if (mounted) setState(() => _feeServices = []);
+      if (mounted) setState(() => _paymentTypes = []);
     }
   }
 
@@ -141,7 +174,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         _discount.text = p.discount.toStringAsFixed(2);
         _note.text = p.note ?? '';
         _paymentMethod = p.paymentMethod ?? PaymentMethod.cash;
-        _selectedFeeServiceId = p.feeServiceId;
         _loadingEdit = false;
       });
     } catch (e) {
@@ -154,61 +186,54 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     }
   }
 
-  Future<void> _addNewService() async {
-    final nameCtrl = TextEditingController();
-    try {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('নতুন সার্ভিস', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
-          content: TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'নাম',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.cardRadius)),
-            ),
-            style: GoogleFonts.hindSiliguri(),
+  void _addFeeItem() {
+    if (_paymentTypes.isEmpty) return;
+    final firstType = _paymentTypes.first;
+    final defaultAmt = _paymentSettings.defaultAmountForCode(
+      firstType.code,
+      fallback: firstType.defaultAmount ?? 0,
+    );
+    setState(() {
+      _feeItems.add(
+        _FeeItemState(
+          paymentTypeId: firstType.id,
+          amountDueCtrl: TextEditingController(
+            text: defaultAmt.toStringAsFixed(2),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('বাতিল', style: GoogleFonts.hindSiliguri()),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text('যোগ করুন', style: GoogleFonts.hindSiliguri()),
-            ),
-          ],
+          amountPaidCtrl: TextEditingController(
+            text: defaultAmt.toStringAsFixed(2),
+          ),
         ),
       );
-      if (ok != true || !mounted) return;
-      final name = nameCtrl.text.trim();
-      if (name.isEmpty) return;
-      final s = await ref.read(paymentRepositoryProvider).addFeeService(name);
-      if (!mounted) return;
-      final merged = [..._feeServices, s]
-        ..sort((a, b) => a.sortOrder != b.sortOrder
-            ? a.sortOrder.compareTo(b.sortOrder)
-            : a.name.compareTo(b.name));
-      setState(() {
-        _feeServices = merged;
-        _selectedFeeServiceId = s.id;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('সার্ভিস যোগ হয়েছে', style: GoogleFonts.hindSiliguri())),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
-        );
-      }
-    } finally {
-      nameCtrl.dispose();
+    });
+    _autoApplyStudentDiscounts();
+  }
+
+  void _removeFeeItem(int index) {
+    if (_feeItems.length <= 1) return;
+    final item = _feeItems.removeAt(index);
+    item.dispose();
+    setState(() {});
+  }
+
+  PaymentTypeModel? _typeById(String id) {
+    for (final t in _paymentTypes) {
+      if (t.id == id) return t;
     }
+    return null;
+  }
+
+  double _parseNum(String raw) => double.tryParse(raw.trim().replaceAll(',', '')) ?? 0;
+
+  double _multiGrandTotal() {
+    var sum = 0.0;
+    for (final item in _feeItems) {
+      final due = _parseNum(item.amountDueCtrl.text);
+      final dis = _parseNum(item.discountCtrl.text);
+      final fine = _parseNum(item.fineCtrl.text);
+      sum += (due - dis + fine);
+    }
+    return double.parse(sum.toStringAsFixed(2));
   }
 
   @override
@@ -220,6 +245,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     _note.dispose();
     _monthDisplay.dispose();
     _paidDateDisplay.dispose();
+    _transactionRef.dispose();
+    for (final item in _feeItems) {
+      item.dispose();
+    }
     super.dispose();
   }
 
@@ -263,7 +292,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       _studentQuery.text = u.fullNameBn;
       _selectedCourseId = null;
       _courseOptions = [];
-      _selectedFeeServiceId = null;
       _subtotal.clear();
       _discount.text = '0';
     });
@@ -304,11 +332,80 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       _courseOptions = courses;
       if (courses.length == 1) {
         _selectedCourseId = courses.first.id;
-        _subtotal.text = courses.first.monthlyFee.toStringAsFixed(0);
       } else {
         _selectedCourseId = null;
       }
     });
+    await _autoApplyStudentDiscounts();
+  }
+
+  bool _appliesToMatches(String appliesTo, PaymentTypeModel type) {
+    final a = appliesTo.trim().toLowerCase();
+    if (a.isEmpty) return false;
+    if (a == type.code.toLowerCase()) return true;
+    if (a == 'monthly' && type.code.toLowerCase() == 'monthly') return true;
+    return false;
+  }
+
+  double _resolveDiscountAmount({
+    required _FeeItemState item,
+    required PaymentTypeModel type,
+    required List<StudentDiscountModel> studentDiscounts,
+    required Map<String, DiscountRuleModel> rulesById,
+  }) {
+    final due = _parseNum(item.amountDueCtrl.text);
+    for (final sd in studentDiscounts) {
+      if (!_appliesToMatches(sd.appliesTo, type)) continue;
+      if (sd.customAmount != null) {
+        return sd.customAmount! > due ? due : sd.customAmount!;
+      }
+      final rid = sd.discountRuleId;
+      if (rid == null) continue;
+      final rule = rulesById[rid];
+      if (rule == null) continue;
+      if (rule.discountType == DiscountType.fixed) {
+        return rule.discountValue > due ? due : rule.discountValue;
+      }
+      final pct = rule.discountValue / 100;
+      final calc = due * pct;
+      return calc > due ? due : calc;
+    }
+    return 0;
+  }
+
+  Future<void> _autoApplyStudentDiscounts() async {
+    if (_student == null || _course == null || _feeItems.isEmpty) return;
+    try {
+      final repo = ref.read(paymentRepositoryProvider);
+      final sds = await repo.getStudentDiscounts(
+        studentId: _student!.id,
+        courseId: _course!.id,
+        onlyActive: true,
+      );
+      if (sds.isEmpty) return;
+      final rules = await repo.listDiscountRules(activeOnly: true);
+      final rulesById = <String, DiscountRuleModel>{
+        for (final r in rules) r.id: r,
+      };
+      if (!mounted) return;
+      setState(() {
+        for (final item in _feeItems) {
+          final type = _typeById(item.paymentTypeId);
+          if (type == null) continue;
+          final current = _parseNum(item.discountCtrl.text);
+          if (current > 0) continue;
+          final d = _resolveDiscountAmount(
+            item: item,
+            type: type,
+            studentDiscounts: sds,
+            rulesById: rulesById,
+          );
+          if (d > 0) {
+            item.discountCtrl.text = d.toStringAsFixed(2);
+          }
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _pickBillingMonth() async {
@@ -376,84 +473,168 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       );
       return;
     }
-    if (_feeService == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('সার্ভিস নির্বাচন করুন', style: GoogleFonts.hindSiliguri())),
-      );
-      return;
-    }
-
-    final subtotal = double.parse(_subtotal.text.trim().replaceAll(',', ''));
-    final discount = double.tryParse(_discount.text.trim().replaceAll(',', '')) ?? 0;
-    if (discount < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ছাড় ০ বা তার বেশি হতে হবে', style: GoogleFonts.hindSiliguri())),
-      );
-      return;
-    }
-    if (discount > subtotal) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ছাড় মোটের চেয়ে বেশি হতে পারে না', style: GoogleFonts.hindSiliguri())),
-      );
-      return;
-    }
-    final grand = double.parse((subtotal - discount).toStringAsFixed(2));
-    if (grand <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('চূড়ান্ত পরিমাণ ০ এর উপরে হতে হবে', style: GoogleFonts.hindSiliguri())),
-      );
-      return;
-    }
-
     final isEdit = _existingPayment != null;
-    final paymentNew = PaymentModel(
-      id: '',
-      voucherNo: '',
-      studentId: _student!.id,
-      courseId: _course!.id,
-      forMonth: _billingMonth,
-      amount: grand,
-      subtotal: subtotal,
-      discount: discount,
-      feeServiceId: _feeService!.id,
-      paymentMethod: _paymentMethod,
-      status: PaymentStatus.paid,
-      note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-      paidAt: _paymentDate,
-      createdBy: supabaseClient.auth.currentUser?.id,
-    );
 
     setState(() => _submitting = true);
     try {
-      final PaymentModel saved;
+      PaymentModel? saved;
+      double notifyAmount = 0;
+      String successVoucher = '';
       if (isEdit) {
+        final subtotal = _parseNum(_subtotal.text);
+        final discount = _parseNum(_discount.text);
+        final grand = double.parse((subtotal - discount).toStringAsFixed(2));
+        if (grand <= 0) {
+          throw Exception('চূড়ান্ত পরিমাণ ০ এর উপরে হতে হবে');
+        }
         saved = await ref.read(paymentRepositoryProvider).updatePayment(
               _existingPayment!.copyWith(
                 amount: grand,
                 subtotal: subtotal,
                 discount: discount,
-                feeServiceId: _feeService!.id,
                 paymentMethod: _paymentMethod,
                 note: _note.text.trim().isEmpty ? null : _note.text.trim(),
                 paidAt: _paymentDate,
               ),
             );
+        notifyAmount = grand;
+        successVoucher = saved.voucherNo;
       } else {
-        saved = await ref.read(paymentRepositoryProvider).addPayment(paymentNew);
-      }
-      final pdfBytes = await ref.read(pdfServiceProvider).generateVoucherPdf(
-            saved,
-            _student!,
-            _course!,
-            serviceName: _feeService!.name,
+        if (_feeItems.isEmpty) {
+          throw Exception('কমপক্ষে ১টি ফি যোগ করুন');
+        }
+        final reqs = <PaymentRecordRequest>[];
+        for (final item in _feeItems) {
+          final t = _typeById(item.paymentTypeId);
+          if (t == null) {
+            throw Exception('ফি ধরন নির্বাচন করুন');
+          }
+          final due = _parseNum(item.amountDueCtrl.text);
+          final paid = _parseNum(item.amountPaidCtrl.text);
+          final discount = _parseNum(item.discountCtrl.text);
+          final fine = _parseNum(item.fineCtrl.text);
+          if (due <= 0) {
+            throw Exception('নির্ধারিত পরিমাণ ০ এর বেশি হতে হবে');
+          }
+          if (paid < 0) {
+            throw Exception('পরিশোধিত পরিমাণ সঠিক নয়');
+          }
+          if (discount < 0 || discount > due) {
+            throw Exception('ছাড় সঠিক নয়');
+          }
+          reqs.add(
+            PaymentRecordRequest(
+              studentId: _student!.id,
+              courseId: _course!.id,
+              paymentTypeId: t.id,
+              paymentTypeCode: t.code,
+              forMonth: t.isRecurring ? _billingMonth : null,
+              amountDue: due,
+              amountPaid: paid,
+              discountAmount: discount,
+              fineAmount: fine,
+              paymentMethod: _paymentMethod.toJson(),
+              transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
+              note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+              description: item.descriptionCtrl.text.trim().isEmpty ? null : item.descriptionCtrl.text.trim(),
+              paidAt: _paymentDate,
+              createdBy: supabaseClient.auth.currentUser?.id,
+              dueDate: DateTime(
+                _billingMonth.year,
+                _billingMonth.month,
+                _paymentSettings.dueDayOfMonth,
+              ),
+            ),
           );
+        }
+        final multi = await ref.read(paymentServiceProvider).recordMultiFeePayments(reqs);
+        if (multi.items.isEmpty) {
+          throw Exception('লেনদেন তৈরি হয়নি');
+        }
+        notifyAmount = multi.totalPaid;
+        successVoucher = multi.items.first.ledger.voucherNo;
+        final first = multi.items.first;
+        final firstType = _typeById(first.ledger.paymentTypeId);
+        saved = PaymentModel(
+          id: first.ledger.id,
+          voucherNo: first.ledger.voucherNo,
+          studentId: first.ledger.studentId,
+          courseId: first.ledger.courseId,
+          forMonth: _billingMonth,
+          amount: first.ledger.amountPaid,
+          subtotal: first.ledger.amountDue,
+          discount: first.ledger.discountAmount,
+          paymentMethod: PaymentMethod.fromJson(first.ledger.paymentMethod),
+          status: first.ledger.status == LedgerPaymentStatus.partial ? PaymentStatus.partial : PaymentStatus.paid,
+          note: first.ledger.note,
+          paidAt: first.ledger.paidAt,
+          createdBy: first.ledger.createdBy,
+        );
+
+        final pdfBytes = await ref.read(pdfServiceProvider).generateVoucherPdf(
+              saved,
+              _student!,
+              _course!,
+              serviceName: firstType?.nameBn ?? firstType?.name ?? 'Payment',
+            );
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: Text('পেমেন্ট সফল', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('মোট আইটেম: ${multi.items.length}', style: GoogleFonts.hindSiliguri()),
+                const SizedBox(height: 8),
+                SelectableText('প্রথম ভাউচার: $successVoucher', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      files: [
+                        XFile.fromData(
+                          pdfBytes,
+                          mimeType: 'application/pdf',
+                          name: 'RCC-$successVoucher.pdf',
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: Text('শেয়ার করুন', style: GoogleFonts.hindSiliguri()),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  await Printing.layoutPdf(
+                    onLayout: (_) async => pdfBytes,
+                    name: 'RCC-$successVoucher.pdf',
+                  );
+                },
+                child: Text('ভাউচার দেখুন', style: GoogleFonts.hindSiliguri()),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
+              ),
+            ],
+          ),
+        );
+      }
 
       if (!isEdit) {
         try {
           await ref.read(smsServiceProvider).notifyPaymentRecorded(
                 phone: _student!.phone,
-                voucherNo: saved.voucherNo,
-                amountLabel: '৳${saved.amount.toStringAsFixed(0)}',
+                voucherNo: successVoucher,
+                amountLabel: '৳${notifyAmount.toStringAsFixed(0)}',
                 courseName: _course!.name,
                 studentName: _student!.fullNameBn,
               );
@@ -474,66 +655,41 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       if (!mounted) return;
       setState(() => _submitting = false);
 
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          return AlertDialog(
-            title: Text(
-              'সফল',
-              style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isEdit ? 'পেমেন্ট হালনাগাদ হয়েছে ✅' : 'পেমেন্ট সফলভাবে যোগ হয়েছে ✅',
-                  style: GoogleFonts.hindSiliguri(),
-                ),
-                const SizedBox(height: 12),
-                SelectableText(
-                  'ভাউচার নং: ${saved.voucherNo}',
-                  style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w600),
+      if (isEdit) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) {
+            return AlertDialog(
+              title: Text(
+                'সফল',
+                style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'পেমেন্ট হালনাগাদ হয়েছে ✅',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                  const SizedBox(height: 12),
+                  SelectableText(
+                    'ভাউচার নং: ${saved!.voucherNo}',
+                    style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  await SharePlus.instance.share(
-                    ShareParams(
-                      files: [
-                        XFile.fromData(
-                          pdfBytes,
-                          mimeType: 'application/pdf',
-                          name: 'RCC-${saved.voucherNo}.pdf',
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                child: Text('শেয়ার করুন', style: GoogleFonts.hindSiliguri()),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  await Printing.layoutPdf(
-                    onLayout: (_) async => pdfBytes,
-                    name: 'RCC-${saved.voucherNo}.pdf',
-                  );
-                },
-                child: Text('ভাউচার দেখুন', style: GoogleFonts.hindSiliguri()),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
-              ),
-            ],
-          );
-        },
-      );
+            );
+          },
+        );
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _submitting = false);
@@ -664,63 +820,139 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                   _subtotal.text = c.monthlyFee.toStringAsFixed(0);
                                 }
                               });
+                              _autoApplyStudentDiscounts();
                             },
                     ),
                   const SizedBox(height: 16),
-                  Text(
-                    'সার্ভিস',
-                    style: GoogleFonts.hindSiliguri(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
+                  if (_existingPayment == null) ...[
+                    Text(
+                      'ফি আইটেম (একসাথে একাধিক)',
+                      style: GoogleFonts.hindSiliguri(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<FeeServiceModel>(
-                          value: _feeService,
-                          decoration: _decoration('সার্ভিস নির্বাচন করুন'),
-                          items: _feeServices
-                              .map(
-                                (s) => DropdownMenuItem<FeeServiceModel>(
-                                  value: s,
-                                  child: Text(s.name, style: GoogleFonts.hindSiliguri()),
+                    const SizedBox(height: 8),
+                    if (_paymentTypes.isEmpty)
+                      Text('ফি ধরন লোড হচ্ছে...', style: GoogleFonts.hindSiliguri(color: theme.hintColor))
+                    else
+                      ...List.generate(_feeItems.length, (i) {
+                        final item = _feeItems[i];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: item.paymentTypeId,
+                                        decoration: _decoration('ফি ধরন'),
+                                        items: _paymentTypes
+                                            .map(
+                                              (t) => DropdownMenuItem<String>(
+                                                value: t.id,
+                                                child: Text(t.nameBn, style: GoogleFonts.hindSiliguri()),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: _submitting
+                                            ? null
+                                            : (v) {
+                                                setState(() {
+                                                  item.paymentTypeId = v ?? item.paymentTypeId;
+                                                });
+                                                _autoApplyStudentDiscounts();
+                                              },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      onPressed: _submitting ? null : () => _removeFeeItem(i),
+                                      icon: const Icon(Icons.delete_outline),
+                                    ),
+                                  ],
                                 ),
-                              )
-                              .toList(),
-                          onChanged: _submitting || _loadingEdit
-                              ? null
-                              : (s) => setState(() => _selectedFeeServiceId = s?.id),
-                          validator: (s) =>
-                              s == null ? 'সার্ভিস নির্বাচন করুন' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _submitting ? null : _addNewService,
-                          icon: const Icon(Icons.add, size: 20),
-                          label: Text('নতুন', style: GoogleFonts.hindSiliguri()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_feeServices.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        'সার্ভিস লোড হচ্ছে… অথবা «নতুন» দিয়ে যোগ করুন',
-                        style: GoogleFonts.hindSiliguri(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                                const SizedBox(height: 8),
+                                TextFormField(
+                                  controller: item.descriptionCtrl,
+                                  decoration: _decoration('বিবরণ (ঐচ্ছিক)'),
+                                  style: GoogleFonts.hindSiliguri(),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: item.amountDueCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: _decoration('নির্ধারিত'),
+                                        style: GoogleFonts.nunito(),
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: item.discountCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: _decoration('ছাড়'),
+                                        style: GoogleFonts.nunito(),
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: item.fineCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: _decoration('জরিমানা'),
+                                        style: GoogleFonts.nunito(),
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: item.amountPaidCtrl,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        decoration: _decoration('পরিশোধিত'),
+                                        style: GoogleFonts.nunito(),
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _submitting ? null : _addFeeItem,
+                        icon: const Icon(Icons.add),
+                        label: Text('আরও ফি যোগ করুন', style: GoogleFonts.hindSiliguri()),
                       ),
                     ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'মোট নেট: ৳ ${_multiGrandTotal().toStringAsFixed(2)}',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   TextFormField(
                     controller: _monthDisplay,
                     readOnly: true,
@@ -734,37 +966,39 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     style: GoogleFonts.nunito(),
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _subtotal,
-                    enabled: !_submitting,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: _decoration('মোট / সাবটোটাল (৳)'),
-                    style: GoogleFonts.nunito(),
-                    validator: _validateSubtotal,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _discount,
-                    enabled: !_submitting,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: _decoration('ছাড় (৳)'),
-                    style: GoogleFonts.nunito(),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'চূড়ান্ত: ৳ ${_parseGrandTotal().toStringAsFixed(2)}',
-                      style: GoogleFonts.nunito(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary,
+                  if (_existingPayment != null) ...[
+                    TextFormField(
+                      controller: _subtotal,
+                      enabled: !_submitting,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _decoration('মোট / সাবটোটাল (৳)'),
+                      style: GoogleFonts.nunito(),
+                      validator: _validateSubtotal,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _discount,
+                      enabled: !_submitting,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _decoration('ছাড় (৳)'),
+                      style: GoogleFonts.nunito(),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'চূড়ান্ত: ৳ ${_parseGrandTotal().toStringAsFixed(2)}',
+                        style: GoogleFonts.nunito(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
                   Text(
                     'পেমেন্টের মাধ্যম',
                     style: GoogleFonts.hindSiliguri(
@@ -773,33 +1007,44 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SegmentedButton<PaymentMethod>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(
-                          value: PaymentMethod.cash,
-                          label: Text('Cash'),
+                  Builder(
+                    builder: (context) {
+                      final allowed = _paymentSettings.allowedMethods();
+                      final segments = allowed
+                          .map(
+                            (m) => ButtonSegment<PaymentMethod>(
+                              value: m,
+                              label: Text(
+                                switch (m) {
+                                  PaymentMethod.cash => 'Cash',
+                                  PaymentMethod.bkash => 'bKash',
+                                  PaymentMethod.nagad => 'Nagad',
+                                  PaymentMethod.bank => 'Bank',
+                                  PaymentMethod.other => 'Other',
+                                },
+                              ),
+                            ),
+                          )
+                          .toList();
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SegmentedButton<PaymentMethod>(
+                          showSelectedIcon: false,
+                          segments: segments,
+                          selected: {_paymentMethod},
+                          onSelectionChanged: _submitting
+                              ? null
+                              : (s) => setState(() => _paymentMethod = s.first),
                         ),
-                        ButtonSegment(
-                          value: PaymentMethod.bkash,
-                          label: Text('bKash'),
-                        ),
-                        ButtonSegment(
-                          value: PaymentMethod.nagad,
-                          label: Text('Nagad'),
-                        ),
-                        ButtonSegment(
-                          value: PaymentMethod.bank,
-                          label: Text('Bank'),
-                        ),
-                      ],
-                      selected: {_paymentMethod},
-                      onSelectionChanged: _submitting
-                          ? null
-                          : (s) => setState(() => _paymentMethod = s.first),
-                    ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _transactionRef,
+                    enabled: !_submitting,
+                    decoration: _decoration('ট্রানজেকশন রেফ (bKash/Nagad/Bank)'),
+                    style: GoogleFonts.nunito(),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -855,5 +1100,35 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         ],
       ),
     );
+  }
+}
+
+class _FeeItemState {
+  _FeeItemState({
+    required this.paymentTypeId,
+    TextEditingController? amountDueCtrl,
+    TextEditingController? discountCtrl,
+    TextEditingController? fineCtrl,
+    TextEditingController? amountPaidCtrl,
+    TextEditingController? descriptionCtrl,
+  })  : amountDueCtrl = amountDueCtrl ?? TextEditingController(),
+        discountCtrl = discountCtrl ?? TextEditingController(text: '0'),
+        fineCtrl = fineCtrl ?? TextEditingController(text: '0'),
+        amountPaidCtrl = amountPaidCtrl ?? TextEditingController(),
+        descriptionCtrl = descriptionCtrl ?? TextEditingController();
+
+  String paymentTypeId;
+  final TextEditingController amountDueCtrl;
+  final TextEditingController discountCtrl;
+  final TextEditingController fineCtrl;
+  final TextEditingController amountPaidCtrl;
+  final TextEditingController descriptionCtrl;
+
+  void dispose() {
+    amountDueCtrl.dispose();
+    discountCtrl.dispose();
+    fineCtrl.dispose();
+    amountPaidCtrl.dispose();
+    descriptionCtrl.dispose();
   }
 }

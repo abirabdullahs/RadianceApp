@@ -67,7 +67,10 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: title,
-        actions: actions,
+        actions: [
+          ...(actions ?? const <Widget>[]),
+          const AppBarDrawerAction(),
+        ],
       ),
       body: body,
     );

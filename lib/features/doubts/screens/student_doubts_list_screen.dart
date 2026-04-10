@@ -72,7 +72,7 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('সন্দেহ সমাধান', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
-        actions: const [NotificationAppBarAction()],
+        actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/student/doubts/new'),

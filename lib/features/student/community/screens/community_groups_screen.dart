@@ -31,7 +31,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
-        actions: const [NotificationAppBarAction()],
+        actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _future,

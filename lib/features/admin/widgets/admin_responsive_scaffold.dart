@@ -106,7 +106,10 @@ class AdminResponsiveScaffold extends ConsumerWidget {
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
           title: title,
-          actions: actions,
+          actions: [
+            ...(actions ?? const <Widget>[]),
+            const AppBarDrawerAction(),
+          ],
           bottom: bottom,
         ),
         floatingActionButton: floatingActionButton,

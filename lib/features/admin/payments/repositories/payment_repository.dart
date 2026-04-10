@@ -5,8 +5,16 @@ import '../../../../core/constants.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/fee_service_model.dart';
 import '../../../../shared/models/overdue_student_info.dart';
+import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_due_model.dart';
 import '../../../../shared/models/payment_model.dart';
+import '../../../../shared/models/payment_schedule_model.dart';
+import '../../../../shared/models/payment_type_model.dart';
+import '../../../../shared/models/discount_rule_model.dart';
+import '../../../../shared/models/student_discount_model.dart';
+import '../../../../shared/models/advance_balance_model.dart';
+import '../../../../shared/models/payment_report_models.dart';
+import '../../../../shared/models/payment_settings_model.dart';
 import '../../../../shared/models/user_model.dart';
 
 /// Payments, dues, revenue aggregates, overdue lists (Supabase).
@@ -196,8 +204,8 @@ class PaymentRepository {
     final rangeEnd = DateTime(now.year, now.month + 1, 1);
 
     final rows = await _client
-        .from(kTablePayments)
-        .select('amount, paid_at')
+        .from(kTablePaymentLedger)
+        .select('amount_paid, paid_at')
         .gte('paid_at', rangeStart.toUtc().toIso8601String())
         .lt('paid_at', rangeEnd.toUtc().toIso8601String());
 
@@ -221,7 +229,7 @@ class PaymentRepository {
       final key =
           '${local.year}-${local.month.toString().padLeft(2, '0')}';
       if (!buckets.containsKey(key)) continue;
-      final amt = _parseAmount(m['amount']);
+      final amt = _parseAmount(m['amount_paid']);
       buckets[key] = (buckets[key] ?? 0) + amt;
     }
 
@@ -286,6 +294,505 @@ class PaymentRepository {
       );
     }
     return out;
+  }
+
+  // ---------------------------
+  // Section 2: New payment domain data layer
+  // ---------------------------
+
+  Future<List<PaymentTypeModel>> listPaymentTypes({bool activeOnly = true}) async {
+    var q = _client.from(kTablePaymentTypes).select();
+    if (activeOnly) {
+      q = q.eq('is_active', true);
+    }
+    final rows = await q.order('created_at', ascending: true);
+    return (rows as List<dynamic>)
+        .map((e) => PaymentTypeModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<List<PaymentLedgerModel>> getPaymentLedger({
+    String? studentId,
+    String? courseId,
+    String? paymentTypeCode,
+    DateTime? month,
+  }) async {
+    var q = _client.from(kTablePaymentLedger).select();
+    if (studentId != null && studentId.isNotEmpty) {
+      q = q.eq('student_id', studentId);
+    }
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    if (paymentTypeCode != null && paymentTypeCode.isNotEmpty) {
+      q = q.eq('payment_type_code', paymentTypeCode);
+    }
+    if (month != null) {
+      final m = DateTime(month.year, month.month, 1);
+      q = q.eq('for_month', dateToSqlDate(m));
+    }
+    final rows = await q.order('paid_at', ascending: false);
+    return (rows as List<dynamic>)
+        .map((e) => PaymentLedgerModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<PaymentLedgerModel> addPaymentLedger(PaymentLedgerModel ledger) async {
+    final row = await _client
+        .from(kTablePaymentLedger)
+        .insert(ledger.toInsertJson())
+        .select()
+        .single();
+    return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<List<PaymentScheduleModel>> getPaymentSchedule({
+    String? studentId,
+    String? courseId,
+    String? paymentTypeCode,
+    DateTime? month,
+    bool onlyOpen = false,
+  }) async {
+    var q = _client.from(kTablePaymentSchedule).select();
+    if (studentId != null && studentId.isNotEmpty) {
+      q = q.eq('student_id', studentId);
+    }
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    if (paymentTypeCode != null && paymentTypeCode.isNotEmpty) {
+      q = q.eq('payment_type_code', paymentTypeCode);
+    }
+    if (month != null) {
+      final m = DateTime(month.year, month.month, 1);
+      q = q.eq('for_month', dateToSqlDate(m));
+    }
+    if (onlyOpen) {
+      q = q.inFilter('status', ['pending', 'partial', 'overdue']);
+    }
+    final rows = await q.order('due_date', ascending: true);
+    return (rows as List<dynamic>)
+        .map((e) => PaymentScheduleModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<List<DiscountRuleModel>> listDiscountRules({bool activeOnly = true}) async {
+    var q = _client.from(kTableDiscountRules).select();
+    if (activeOnly) {
+      q = q.eq('is_active', true);
+    }
+    final rows = await q.order('created_at', ascending: false);
+    return (rows as List<dynamic>)
+        .map((e) => DiscountRuleModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<DiscountRuleModel> addDiscountRule({
+    required String name,
+    required String nameBn,
+    required DiscountType discountType,
+    required double discountValue,
+    required String appliesTo,
+    bool isActive = true,
+  }) async {
+    final row = await _client
+        .from(kTableDiscountRules)
+        .insert(<String, dynamic>{
+          'name': name.trim(),
+          'name_bn': nameBn.trim(),
+          'discount_type': discountType.toJson(),
+          'discount_value': discountValue,
+          'applies_to': appliesTo.trim(),
+          'is_active': isActive,
+        })
+        .select()
+        .single();
+    return DiscountRuleModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<DiscountRuleModel> updateDiscountRule({
+    required String id,
+    String? name,
+    String? nameBn,
+    DiscountType? discountType,
+    double? discountValue,
+    String? appliesTo,
+    bool? isActive,
+  }) async {
+    final payload = <String, dynamic>{
+      if (name != null) 'name': name.trim(),
+      if (nameBn != null) 'name_bn': nameBn.trim(),
+      if (discountType != null) 'discount_type': discountType.toJson(),
+      if (discountValue != null) 'discount_value': discountValue,
+      if (appliesTo != null) 'applies_to': appliesTo.trim(),
+      if (isActive != null) 'is_active': isActive,
+    };
+    final row = await _client
+        .from(kTableDiscountRules)
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+    return DiscountRuleModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<List<StudentDiscountModel>> getStudentDiscounts({
+    String? studentId,
+    String? courseId,
+    bool onlyActive = true,
+  }) async {
+    var q = _client.from(kTableStudentDiscounts).select();
+    if (studentId != null && studentId.isNotEmpty) {
+      q = q.eq('student_id', studentId);
+    }
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    if (onlyActive) {
+      q = q.eq('is_active', true);
+    }
+    final rows = await q.order('created_at', ascending: false);
+    return (rows as List<dynamic>)
+        .map((e) => StudentDiscountModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  Future<StudentDiscountModel> assignStudentDiscount({
+    required String studentId,
+    required String courseId,
+    String? discountRuleId,
+    double? customAmount,
+    String? customReason,
+    required String appliesTo,
+    required DateTime validFrom,
+    DateTime? validUntil,
+    bool isActive = true,
+    String? createdBy,
+  }) async {
+    final row = await _client
+        .from(kTableStudentDiscounts)
+        .insert(<String, dynamic>{
+          'student_id': studentId,
+          'course_id': courseId,
+          'discount_rule_id': discountRuleId,
+          'custom_amount': customAmount,
+          'custom_reason': customReason,
+          'applies_to': appliesTo,
+          'valid_from': dateToSqlDate(validFrom),
+          'valid_until': validUntil == null ? null : dateToSqlDate(validUntil),
+          'is_active': isActive,
+          'created_by': createdBy,
+        })
+        .select()
+        .single();
+    return StudentDiscountModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> setStudentDiscountActive({
+    required String studentDiscountId,
+    required bool isActive,
+  }) async {
+    await _client
+        .from(kTableStudentDiscounts)
+        .update(<String, dynamic>{'is_active': isActive})
+        .eq('id', studentDiscountId);
+  }
+
+  Future<AdvanceBalanceModel?> getAdvanceBalance({
+    required String studentId,
+    required String courseId,
+  }) async {
+    final row = await _client
+        .from(kTableAdvanceBalance)
+        .select()
+        .eq('student_id', studentId)
+        .eq('course_id', courseId)
+        .maybeSingle();
+    if (row == null) return null;
+    return AdvanceBalanceModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<AdvanceBalanceModel> upsertAdvanceBalance({
+    required String studentId,
+    required String courseId,
+    required double balance,
+  }) async {
+    final row = await _client
+        .from(kTableAdvanceBalance)
+        .upsert(
+          <String, dynamic>{
+            'student_id': studentId,
+            'course_id': courseId,
+            'balance': balance,
+            'last_updated': DateTime.now().toUtc().toIso8601String(),
+          },
+          onConflict: 'student_id,course_id',
+        )
+        .select()
+        .single();
+    return AdvanceBalanceModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<PaymentScheduleModel?> getScheduleTarget({
+    required String studentId,
+    required String courseId,
+    required String paymentTypeId,
+    DateTime? forMonth,
+  }) async {
+    var q = _client
+        .from(kTablePaymentSchedule)
+        .select()
+        .eq('student_id', studentId)
+        .eq('course_id', courseId)
+        .eq('payment_type_id', paymentTypeId);
+    if (forMonth == null) {
+      q = q.isFilter('for_month', null);
+    } else {
+      q = q.eq('for_month', dateToSqlDate(DateTime(forMonth.year, forMonth.month, 1)));
+    }
+    final row = await q.maybeSingle();
+    if (row == null) return null;
+    return PaymentScheduleModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<PaymentScheduleModel> upsertPaymentSchedule({
+    String? id,
+    required String studentId,
+    required String courseId,
+    required String paymentTypeId,
+    required String paymentTypeCode,
+    DateTime? forMonth,
+    required DateTime dueDate,
+    required double amount,
+    required PaymentScheduleStatus status,
+    required double paidAmount,
+    String? note,
+  }) async {
+    final payload = <String, dynamic>{
+      if (id != null && id.isNotEmpty) 'id': id,
+      'student_id': studentId,
+      'course_id': courseId,
+      'payment_type_id': paymentTypeId,
+      'payment_type_code': paymentTypeCode,
+      'for_month': forMonth == null
+          ? null
+          : dateToSqlDate(DateTime(forMonth.year, forMonth.month, 1)),
+      'due_date': dateToSqlDate(DateTime(dueDate.year, dueDate.month, dueDate.day)),
+      'amount': amount,
+      'status': status.toJson(),
+      'paid_amount': paidAmount,
+      'note': note,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final row = await _client
+        .from(kTablePaymentSchedule)
+        .upsert(
+          payload,
+          onConflict: 'student_id,course_id,payment_type_id,for_month',
+        )
+        .select()
+        .single();
+    return PaymentScheduleModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<PaymentSettingsModel> getPaymentSettings() async {
+    final row = await _client
+        .from(kTablePaymentSettings)
+        .select()
+        .eq('singleton_key', 1)
+        .maybeSingle();
+    if (row == null) {
+      return const PaymentSettingsModel();
+    }
+    return PaymentSettingsModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<PaymentSettingsModel> savePaymentSettings(PaymentSettingsModel settings) async {
+    final row = await _client
+        .from(kTablePaymentSettings)
+        .upsert(
+          settings.toUpsertJson(updatedBy: _client.auth.currentUser?.id),
+          onConflict: 'singleton_key',
+        )
+        .select()
+        .single();
+    return PaymentSettingsModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<MonthlyCollectionReport> getMonthlyCollectionReport({
+    required DateTime month,
+    String? courseId,
+  }) async {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    var q = _client
+        .from(kTablePaymentLedger)
+        .select('payment_type_code, amount_paid, student_id')
+        .gte('paid_at', start.toUtc().toIso8601String())
+        .lt('paid_at', end.toUtc().toIso8601String());
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    final rows = await q;
+    final byType = <String, List<Map<String, dynamic>>>{};
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final key = (m['payment_type_code'] as String? ?? 'other').toLowerCase();
+      byType.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(m);
+    }
+    final breakdown = <MonthlyCollectionBreakdownRow>[];
+    var total = 0.0;
+    var tx = 0;
+    for (final e in byType.entries) {
+      final list = e.value;
+      var subtotal = 0.0;
+      final studentIds = <String>{};
+      for (final m in list) {
+        subtotal += _parseAmount(m['amount_paid']);
+        final sid = m['student_id'] as String?;
+        if (sid != null) studentIds.add(sid);
+      }
+      total += subtotal;
+      tx += list.length;
+      breakdown.add(
+        MonthlyCollectionBreakdownRow(
+          paymentTypeCode: e.key,
+          collectedAmount: double.parse(subtotal.toStringAsFixed(2)),
+          transactionsCount: list.length,
+          studentCount: studentIds.length,
+        ),
+      );
+    }
+    breakdown.sort((a, b) => b.collectedAmount.compareTo(a.collectedAmount));
+    return MonthlyCollectionReport(
+      month: start,
+      totalCollected: double.parse(total.toStringAsFixed(2)),
+      totalTransactions: tx,
+      breakdown: breakdown,
+    );
+  }
+
+  Future<List<DueReportRow>> getDueReport({
+    DateTime? month,
+    String? courseId,
+    bool overdueOnly = false,
+  }) async {
+    var q = _client
+        .from(kTablePaymentSchedule)
+        .select()
+        .inFilter('status', ['pending', 'partial', 'overdue']);
+    if (month != null) {
+      q = q.eq('for_month', dateToSqlDate(DateTime(month.year, month.month, 1)));
+    }
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    if (overdueOnly) {
+      q = q.eq('status', 'overdue');
+    }
+    final rawRows = await q.order('due_date', ascending: true);
+    final schedules = (rawRows as List<dynamic>)
+        .map((e) => PaymentScheduleModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    if (schedules.isEmpty) return [];
+
+    final studentIds = schedules.map((e) => e.studentId).toSet().toList();
+    final courseIds = schedules.map((e) => e.courseId).toSet().toList();
+    final usersRaw = await _client.from(kTableUsers).select('id, full_name_bn').inFilter('id', studentIds);
+    final coursesRaw = await _client.from(kTableCourses).select('id, name').inFilter('id', courseIds);
+    final users = <String, String>{};
+    final courses = <String, String>{};
+    for (final raw in usersRaw as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      users[m['id'] as String] = m['full_name_bn'] as String? ?? 'Student';
+    }
+    for (final raw in coursesRaw) {
+      final m = Map<String, dynamic>.from(raw);
+      courses[m['id'] as String] = m['name'] as String? ?? 'Course';
+    }
+
+    final today = DateTime.now();
+    return schedules.map((s) {
+      final overdue = s.dueDate.isBefore(DateTime(today.year, today.month, today.day))
+          ? DateTime(today.year, today.month, today.day)
+              .difference(DateTime(s.dueDate.year, s.dueDate.month, s.dueDate.day))
+              .inDays
+          : 0;
+      return DueReportRow(
+        studentId: s.studentId,
+        studentName: users[s.studentId] ?? s.studentId,
+        courseId: s.courseId,
+        courseName: courses[s.courseId] ?? s.courseId,
+        paymentTypeCode: s.paymentTypeCode,
+        forMonth: s.forMonth,
+        status: s.status.name,
+        amount: s.amount,
+        paidAmount: s.paidAmount,
+        remainingAmount: s.remainingAmount,
+        dueDate: s.dueDate,
+        overdueDays: overdue,
+      );
+    }).toList();
+  }
+
+  Future<StudentAnnualReport> getStudentAnnualReport({
+    required String studentId,
+    required int year,
+  }) async {
+    final start = DateTime(year, 1, 1);
+    final end = DateTime(year + 1, 1, 1);
+    final schedules = await _client
+        .from(kTablePaymentSchedule)
+        .select()
+        .eq('student_id', studentId)
+        .gte('due_date', dateToSqlDate(start))
+        .lt('due_date', dateToSqlDate(end))
+        .order('due_date', ascending: false);
+    final rows = (schedules as List<dynamic>)
+        .map((e) => PaymentScheduleModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+    double totalDue = 0;
+    double totalPaid = 0;
+    double totalRemain = 0;
+    final courseIds = rows.map((e) => e.courseId).toSet().toList();
+    final coursesRaw = courseIds.isEmpty
+        ? <dynamic>[]
+        : await _client.from(kTableCourses).select('id, name').inFilter('id', courseIds);
+    final courses = <String, String>{};
+    for (final raw in coursesRaw) {
+      final m = Map<String, dynamic>.from(raw);
+      courses[m['id'] as String] = m['name'] as String? ?? 'Course';
+    }
+    final out = <DueReportRow>[];
+    for (final s in rows) {
+      totalDue += s.amount;
+      totalPaid += s.paidAmount;
+      totalRemain += s.remainingAmount;
+      out.add(
+        DueReportRow(
+          studentId: s.studentId,
+          studentName: '',
+          courseId: s.courseId,
+          courseName: courses[s.courseId] ?? s.courseId,
+          paymentTypeCode: s.paymentTypeCode,
+          forMonth: s.forMonth,
+          status: s.status.name,
+          amount: s.amount,
+          paidAmount: s.paidAmount,
+          remainingAmount: s.remainingAmount,
+          dueDate: s.dueDate,
+          overdueDays: 0,
+        ),
+      );
+    }
+    return StudentAnnualReport(
+      studentId: studentId,
+      year: year,
+      totalDue: double.parse(totalDue.toStringAsFixed(2)),
+      totalPaid: double.parse(totalPaid.toStringAsFixed(2)),
+      totalRemaining: double.parse(totalRemain.toStringAsFixed(2)),
+      rows: out,
+    );
   }
 }
 

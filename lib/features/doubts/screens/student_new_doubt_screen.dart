@@ -64,6 +64,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('নতুন সন্দেহ', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+        actions: const [AppBarDrawerAction()],
       ),
       body: Stack(
         children: [

@@ -45,6 +45,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('নোটিফিকেশন', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: [
+          const AppBarDrawerAction(),
           TextButton(
             onPressed: () async {
               await ref.read(notificationsRepositoryProvider).markAllRead();

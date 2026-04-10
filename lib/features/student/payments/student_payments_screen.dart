@@ -42,6 +42,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+        actions: const [AppBarDrawerAction()],
       ),
       body: FutureBuilder<_PayBundle>(
         future: _future,

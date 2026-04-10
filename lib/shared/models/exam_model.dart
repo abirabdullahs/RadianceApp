@@ -4,6 +4,8 @@ class ExamModel {
     required this.id,
     required this.courseId,
     this.subjectId,
+    this.chapterIds = const [],
+    this.examMode = 'online',
     required this.title,
     this.instructions,
     required this.durationMinutes,
@@ -23,6 +25,8 @@ class ExamModel {
   final String id;
   final String courseId;
   final String? subjectId;
+  final List<String> chapterIds;
+  final String examMode;
   final String title;
   final String? instructions;
   final int durationMinutes;
@@ -43,6 +47,8 @@ class ExamModel {
       id: json['id'] as String,
       courseId: json['course_id'] as String,
       subjectId: json['subject_id'] as String?,
+      chapterIds: _parseStringList(json['chapter_ids']),
+      examMode: (json['exam_mode'] as String?) ?? 'online',
       title: json['title'] as String,
       instructions: json['instructions'] as String?,
       durationMinutes: (json['duration_minutes'] as num).toInt(),
@@ -65,6 +71,8 @@ class ExamModel {
       'id': id,
       'course_id': courseId,
       'subject_id': subjectId,
+      'chapter_ids': chapterIds,
+      'exam_mode': examMode,
       'title': title,
       'instructions': instructions,
       'duration_minutes': durationMinutes,
@@ -79,6 +87,14 @@ class ExamModel {
       'created_by': createdBy,
     };
   }
+}
+
+List<String> _parseStringList(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) {
+    return value.map((e) => e.toString()).toList(growable: false);
+  }
+  return const [];
 }
 
 DateTime? _parseDt(dynamic v) {

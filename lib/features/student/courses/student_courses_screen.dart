@@ -49,7 +49,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
-        actions: const [NotificationAppBarAction()],
+        actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       body: FutureBuilder<List<_CourseTile>>(
         future: _future,

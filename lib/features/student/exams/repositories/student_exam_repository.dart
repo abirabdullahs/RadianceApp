@@ -89,6 +89,18 @@ class StudentExamRepository {
     return {};
   }
 
+  Future<Map<String, dynamic>?> getSubmissionState(String examId) async {
+    final uid = _client.auth.currentUser!.id;
+    final row = await _client
+        .from(kTableExamSubmissions)
+        .select('answers, started_at, submitted_at')
+        .eq('exam_id', examId)
+        .eq('student_id', uid)
+        .maybeSingle();
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row as Map);
+  }
+
   Future<void> saveAnswers(String examId, Map<String, dynamic> answers) async {
     final uid = _client.auth.currentUser!.id;
     await _client.from(kTableExamSubmissions).update(<String, dynamic>{

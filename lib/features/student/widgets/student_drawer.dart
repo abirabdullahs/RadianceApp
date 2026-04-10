@@ -10,7 +10,7 @@ import '../../auth/providers/auth_provider.dart' show currentUserProvider, signI
 import '../../../shared/models/user_model.dart';
 
 export '../../../app/widgets/app_bar_drawer_leading.dart'
-    show AppBarDrawerLeading, appBarDrawerLeading, leadingWidthForDrawer;
+    show AppBarDrawerLeading, AppBarDrawerAction, appBarDrawerLeading, leadingWidthForDrawer;
 
 /// পুরনো কোডের সাথে সামঞ্জস্য — খালি; ড্রয়ার শুধু বামে [appBarDrawerLeading] দিয়ে খুলবে।
 @Deprecated('Use appBarDrawerLeading + leadingWidthForDrawer on AppBar')

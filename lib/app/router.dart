@@ -12,7 +12,10 @@ import '../features/admin/attendance/screens/attendance_hub_screen.dart';
 import '../features/admin/attendance/screens/attendance_taking_screen.dart';
 import '../features/admin/dashboard/screens/admin_dashboard_screen.dart';
 import '../features/admin/payments/screens/add_payment_screen.dart';
+import '../features/admin/payments/screens/admin_payment_discounts_screen.dart';
 import '../features/admin/payments/screens/admin_payments_hub_screen.dart';
+import '../features/admin/payments/screens/admin_payment_reports_screen.dart';
+import '../features/admin/payments/screens/admin_payment_settings_screen.dart';
 import '../features/admin/exams/screens/admin_exam_detail_screen.dart';
 import '../features/admin/exams/screens/admin_exam_editor_screen.dart';
 import '../features/admin/exams/screens/admin_exams_list_screen.dart';
@@ -151,6 +154,18 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/admin/payments',
       builder: (context, state) => const AdminPaymentsScreen(),
+    ),
+    GoRoute(
+      path: '/admin/payments/discounts',
+      builder: (context, state) => const AdminPaymentDiscountsScreen(),
+    ),
+    GoRoute(
+      path: '/admin/payments/reports',
+      builder: (context, state) => const AdminPaymentReportsScreen(),
+    ),
+    GoRoute(
+      path: '/admin/payments/settings',
+      builder: (context, state) => const AdminPaymentSettingsScreen(),
     ),
     GoRoute(
       path: '/admin/attendance/:courseId/:date',

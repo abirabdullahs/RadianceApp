@@ -38,6 +38,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
+        actions: const [AppBarDrawerAction()],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _future,

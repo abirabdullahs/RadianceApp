@@ -105,6 +105,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
           'সেটিংস',
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
+        actions: const [AppBarDrawerAction()],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
