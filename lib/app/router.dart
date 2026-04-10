@@ -160,7 +160,9 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/admin/payments/add',
-      builder: (context, state) => const AddPaymentScreen(),
+      builder: (context, state) => AddPaymentScreen(
+        initialStudentId: state.extra is String ? state.extra! as String : null,
+      ),
     ),
     GoRoute(
       path: '/admin/payments',

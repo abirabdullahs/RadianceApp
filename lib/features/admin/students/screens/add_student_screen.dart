@@ -160,7 +160,25 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
       settings: settings,
       courses: activeCourses,
     );
-    if (!mounted || result?.pdfBytes == null || result?.voucherNo == null) {
+    if (!mounted) return result;
+    if (result?.skippedByUser == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Admission fee পরে নিন।',
+            style: GoogleFonts.hindSiliguri(),
+          ),
+          action: SnackBarAction(
+            label: 'এখন নিন',
+            onPressed: () {
+              context.push('/admin/payments/add', extra: student.id);
+            },
+          ),
+        ),
+      );
+      return result;
+    }
+    if (result?.pdfBytes == null || result?.voucherNo == null) {
       return result;
     }
 
@@ -308,7 +326,11 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: saving ? null : () => Navigator.of(ctx).pop(),
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.of(ctx).pop(
+                            const _AdmissionFlowResult(skippedByUser: true),
+                          ),
                   child: Text('এখন না', style: GoogleFonts.hindSiliguri()),
                 ),
                 FilledButton(
@@ -764,8 +786,10 @@ class _AdmissionFlowResult {
   const _AdmissionFlowResult({
     this.voucherNo,
     this.pdfBytes,
+    this.skippedByUser = false,
   });
 
   final String? voucherNo;
   final Uint8List? pdfBytes;
+  final bool skippedByUser;
 }

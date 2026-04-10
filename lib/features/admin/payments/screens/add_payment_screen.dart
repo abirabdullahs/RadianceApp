@@ -25,9 +25,14 @@ import '../services/payment_service.dart';
 /// Admin form: record a payment, PDF voucher, optional SMS log, share/print.
 /// [editingPaymentId] set → load existing row (edit).
 class AddPaymentScreen extends ConsumerStatefulWidget {
-  const AddPaymentScreen({super.key, this.editingPaymentId});
+  const AddPaymentScreen({
+    super.key,
+    this.editingPaymentId,
+    this.initialStudentId,
+  });
 
   final String? editingPaymentId;
+  final String? initialStudentId;
 
   @override
   ConsumerState<AddPaymentScreen> createState() => _AddPaymentScreenState();
@@ -83,8 +88,22 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       await _loadPaymentTypes();
       if (widget.editingPaymentId != null) {
         await _loadPaymentForEdit(widget.editingPaymentId!);
+      } else if (widget.initialStudentId != null &&
+          widget.initialStudentId!.isNotEmpty) {
+        await _prefillInitialStudent(widget.initialStudentId!);
       }
     });
+  }
+
+  Future<void> _prefillInitialStudent(String studentId) async {
+    try {
+      final repo = ref.read(studentRepositoryForPaymentsProvider);
+      final student = await repo.getStudentById(studentId);
+      if (!mounted) return;
+      await _selectStudent(student);
+    } catch (_) {
+      // Ignore prefill failures; manual student search remains available.
+    }
   }
 
   Future<void> _loadPaymentSettings() async {
