@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
@@ -286,27 +286,17 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
     final dateLabel = _formatDateBn(widget.date);
 
     if (_loading) {
-      return Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
-        ),
+      return AdminResponsiveScaffold(
+        constrainBodyWidth: false,
+        title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_loadError != null) {
-      return Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
-        ),
+      return AdminResponsiveScaffold(
+        constrainBodyWidth: false,
+        title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -317,14 +307,9 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
     }
 
     if (_students.isEmpty) {
-      return Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
-        ),
+      return AdminResponsiveScaffold(
+        constrainBodyWidth: false,
+        title: Text('হাজিরা', style: GoogleFonts.hindSiliguri()),
         body: Center(
           child: Text(
             'এই কোর্সে কোনো সক্রিয় শিক্ষার্থী নেই।',
@@ -337,42 +322,37 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
 
     final student = _currentStudent!;
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        toolbarHeight: 96,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _courseName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.hindSiliguri(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+    return AdminResponsiveScaffold(
+      constrainBodyWidth: false,
+      toolbarHeight: 96,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _courseName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.hindSiliguri(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 2),
-            Text(
-              dateLabel,
-              style: GoogleFonts.nunito(fontSize: 14, color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            dateLabel,
+            style: GoogleFonts.nunito(fontSize: 14, color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$_answeredCount/$_total সম্পন্ন',
+            style: GoogleFonts.hindSiliguri(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: context.themePrimary,
             ),
-            const SizedBox(height: 4),
-            Text(
-              '$_answeredCount/$_total সম্পন্ন',
-              style: GoogleFonts.hindSiliguri(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: context.themePrimary,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openGridNavigator,

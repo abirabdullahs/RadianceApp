@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../app/theme.dart';
 import '../../../shared/models/doubt_thread_model.dart';
 import '../../../shared/models/user_model.dart';
-import '../../admin/widgets/admin_drawer.dart';
+import '../../admin/widgets/admin_responsive_scaffold.dart';
 import '../../teacher/widgets/teacher_drawer.dart';
 import '../repositories/doubt_repository.dart';
 
@@ -47,26 +47,9 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
   Widget build(BuildContext context) {
     final prefix = widget.isAdmin ? '/admin/doubts' : '/teacher/doubts';
 
-    return Scaffold(
-      drawer: widget.isAdmin ? const AdminDrawer() : const TeacherDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(
-          'সন্দেহ সমাধান',
-          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() => _future = _load()),
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<DoubtThreadModel>>(
-        future: _future,
-        builder: (context, snap) {
+    final body = FutureBuilder<List<DoubtThreadModel>>(
+      future: _future,
+      builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -119,8 +102,43 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
               },
             ),
           );
-        },
+      },
+    );
+
+    if (widget.isAdmin) {
+      return AdminResponsiveScaffold(
+        title: Text(
+          'সন্দেহ সমাধান',
+          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() => _future = _load()),
+          ),
+        ],
+        body: body,
+      );
+    }
+
+    return Scaffold(
+      drawer: const TeacherDrawer(),
+      appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
+        title: Text(
+          'সন্দেহ সমাধান',
+          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() => _future = _load()),
+          ),
+        ],
       ),
+      body: body,
     );
   }
 }

@@ -7,7 +7,7 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/enrollment_model.dart';
@@ -555,16 +555,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(
-          _existingPayment != null ? 'পেমেন্ট সম্পাদনা' : 'নতুন পেমেন্ট',
-          style: GoogleFonts.hindSiliguri(),
-        ),
+    return AdminResponsiveScaffold(
+      title: Text(
+        _existingPayment != null ? 'পেমেন্ট সম্পাদনা' : 'নতুন পেমেন্ট',
+        style: GoogleFonts.hindSiliguri(),
       ),
       body: Stack(
         children: [

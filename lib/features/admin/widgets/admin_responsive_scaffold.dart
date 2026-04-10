@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../../app/widgets/app_bar_drawer_leading.dart';
 import '../../../app/widgets/theme_picker_sheet.dart';
 import '../../auth/providers/auth_provider.dart' show signInProvider;
 import 'admin_drawer.dart';
@@ -71,6 +70,8 @@ class AdminResponsiveScaffold extends ConsumerWidget {
     this.floatingActionButton,
     this.floatingActionButtonLocation,
     this.constrainBodyWidth = true,
+    this.resizeToAvoidBottomInset = true,
+    this.toolbarHeight,
   });
 
   final Widget title;
@@ -83,6 +84,12 @@ class AdminResponsiveScaffold extends ConsumerWidget {
   /// When true (default), wide layout centers body with [kAdminMaxContentWidth]. Set false for full-bleed (chat, attendance).
   final bool constrainBodyWidth;
 
+  /// Passed to underlying [Scaffold]s (important for chat input + keyboard).
+  final bool resizeToAvoidBottomInset;
+
+  /// Optional [AppBar.toolbarHeight] (e.g. multi-line title on attendance).
+  final double? toolbarHeight;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
@@ -91,8 +98,10 @@ class AdminResponsiveScaffold extends ConsumerWidget {
 
     if (!wide) {
       return Scaffold(
+        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         drawer: const AdminDrawer(),
         appBar: AppBar(
+          toolbarHeight: toolbarHeight,
           leading: const AppBarDrawerLeading(),
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
@@ -122,6 +131,7 @@ class AdminResponsiveScaffold extends ConsumerWidget {
     }
 
     return Scaffold(
+      resizeToAvoidBottomInset: resizeToAvoidBottomInset,
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -132,7 +142,9 @@ class AdminResponsiveScaffold extends ConsumerWidget {
           const VerticalDivider(width: 1, thickness: 1),
           Expanded(
             child: Scaffold(
+              resizeToAvoidBottomInset: resizeToAvoidBottomInset,
               appBar: AppBar(
+                toolbarHeight: toolbarHeight,
                 automaticallyImplyLeading: false,
                 title: title,
                 actions: actions,

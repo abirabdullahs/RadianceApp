@@ -15,6 +15,7 @@ import '../../../core/supabase_client.dart';
 import '../../../shared/models/doubt_thread_model.dart';
 import '../../../shared/models/user_model.dart';
 import '../../admin/widgets/admin_drawer.dart';
+import '../../admin/widgets/admin_responsive_scaffold.dart';
 import '../../student/widgets/student_drawer.dart';
 import '../../teacher/widgets/teacher_drawer.dart';
 import '../repositories/doubt_repository.dart';
@@ -144,6 +145,36 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
       case DoubtChatShell.admin:
         return const AdminDrawer();
     }
+  }
+
+  Widget _chatShell({
+    required Widget title,
+    List<Widget>? actions,
+    Widget? floatingActionButton,
+    required Widget body,
+  }) {
+    if (widget.shell == DoubtChatShell.admin) {
+      return AdminResponsiveScaffold(
+        title: title,
+        actions: actions,
+        floatingActionButton: floatingActionButton,
+        constrainBodyWidth: false,
+        body: body,
+      );
+    }
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      drawer: _drawer(),
+      appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
+        title: title,
+        actions: actions,
+      ),
+      floatingActionButton: floatingActionButton,
+      body: body,
+    );
   }
 
   Future<void> _sendText() async {
@@ -332,27 +363,15 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     if (_loading) {
-      return Scaffold(
-        drawer: _drawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        ),
+      return _chatShell(
+        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_thread == null) {
-      return Scaffold(
-        drawer: _drawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        ),
+      return _chatShell(
+        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: Text('পাওয়া যায়নি')),
       );
     }
@@ -362,45 +381,38 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
 
     final maxBodyW = min(MediaQuery.sizeOf(context).width, 720.0);
 
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      drawer: _drawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.shell != DoubtChatShell.student ? studentName : 'সন্দেহ চ্যাট',
-              style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 17),
-            ),
-            Text(
-              t.status == DoubtStatus.solved ? 'সমাধান হয়েছে' : 'খোলা',
-              style: GoogleFonts.nunito(fontSize: 12, color: scheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-        actions: [
-          if (widget.shell == DoubtChatShell.student &&
-              t.status == DoubtStatus.open &&
-              t.studentId == uid)
-            TextButton(
-              onPressed: _markSolved,
-              child: Text('সমাধান হয়েছে', style: GoogleFonts.hindSiliguri(color: Colors.white)),
-            ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'purge') _purge();
-            },
-            itemBuilder: (ctx) => [
-              PopupMenuItem(value: 'purge', child: Text('চ্যাট মুছুন', style: GoogleFonts.hindSiliguri())),
-            ],
+    return _chatShell(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.shell != DoubtChatShell.student ? studentName : 'সন্দেহ চ্যাট',
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 17),
+          ),
+          Text(
+            t.status == DoubtStatus.solved ? 'সমাধান হয়েছে' : 'খোলা',
+            style: GoogleFonts.nunito(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
         ],
       ),
+      actions: [
+        if (widget.shell == DoubtChatShell.student &&
+            t.status == DoubtStatus.open &&
+            t.studentId == uid)
+          TextButton(
+            onPressed: _markSolved,
+            child: Text('সমাধান হয়েছে', style: GoogleFonts.hindSiliguri(color: Colors.white)),
+          ),
+        PopupMenuButton<String>(
+          onSelected: (v) {
+            if (v == 'purge') _purge();
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(value: 'purge', child: Text('চ্যাট মুছুন', style: GoogleFonts.hindSiliguri())),
+          ],
+        ),
+      ],
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxBodyW),

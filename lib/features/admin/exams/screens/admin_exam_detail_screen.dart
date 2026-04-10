@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../../../../shared/models/question_model.dart';
 import '../repositories/exam_repository.dart';
@@ -39,24 +39,12 @@ class AdminExamDetailScreen extends ConsumerWidget {
         detail: d,
         onRefresh: () => ref.invalidate(_examDetailProvider(examId)),
       ),
-      loading: () => Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
-        ),
+      loading: () => AdminResponsiveScaffold(
+        title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
-        ),
+      error: (e, _) => AdminResponsiveScaffold(
+        title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
         body: Center(child: Text('$e')),
       ),
     );
@@ -86,14 +74,8 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
     final e = widget.detail.exam;
     final qs = widget.detail.questions;
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(e.title, style: GoogleFonts.hindSiliguri()),
-      ),
+    return AdminResponsiveScaffold(
+      title: Text(e.title, style: GoogleFonts.hindSiliguri()),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _addQuestion(context),
         backgroundColor: context.themePrimary,

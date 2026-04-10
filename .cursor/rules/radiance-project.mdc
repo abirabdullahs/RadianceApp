@@ -1,0 +1,112 @@
+---
+description: Radiance Flutter app — full project context (stack, layout, conventions, Supabase, routing)
+alwaysApply: true
+---
+
+# Radiance Coaching Center — project context
+
+**Keep this rule updated** after meaningful architecture, route, or dependency changes. Bump **Last updated** below.
+
+**Last updated:** 2026-04-10 (admin `AdminResponsiveScaffold`, `.cursor/rules` → `.mdc`)
+
+---
+
+## What this is
+
+Flutter app for **Radiance Coaching Center** (Tongi, Gazipur, Bangladesh). **Android** primary; admin may use desktop/web. Domains: **admin**, **student**, **teacher** (doubt inbox). Features: courses, notes, payments, attendance, exams, community chat, doubts, CMS, notifications (in-app + FCM), public home.
+
+Product / DB docs: `plan/`. Schema: `supabase/migrations/`.
+
+---
+
+## Repo layout
+
+| Path | Role |
+|------|------|
+| `lib/app/` | `router.dart` (GoRouter), `theme.dart`, `theme_settings.dart`, shared widgets (`app_bar_drawer_leading`, `notification_app_bar_action`, `theme_picker_sheet`) |
+| `lib/core/` | `supabase_client.dart`, `constants.dart` (roles, `kTable*`, buckets), auth (`profile_role_notifier`, `auth_metadata`), services (`fcm_service`, `notification_edge_service`, `sms_service`), errors |
+| `lib/features/{feature}/` | Feature-first: `screens/`, `repositories/`, `providers/`, `widgets/` as needed |
+| `lib/shared/models/` | Data models |
+| `supabase/migrations/` | Postgres DDL + RLS |
+| `supabase/functions/` | Edge (Deno): `send-notification`, `create-student`, etc. |
+| `scripts/set-fcm-secret.ps1` | UTF-8 **no BOM** env file for `supabase secrets set` (Windows) |
+
+---
+
+## Tech stack
+
+- **Flutter** / Dart `^3.11`
+- **flutter_riverpod** + **riverpod_annotation**; codegen: `dart run build_runner build --delete-conflicting-outputs`
+- **go_router**, **supabase_flutter**, **google_fonts**
+- **firebase_core** / **firebase_messaging** / **flutter_local_notifications**
+- PDF: **pdf**, **printing**, **share_plus**; media: **cached_network_image**, **image_picker**, **file_picker**
+- Others: **uuid**, **dio**, **fl_chart**, **intl**, **url_launcher**, **connectivity_plus**, **shared_preferences**, **youtube_player_flutter**, etc. (see `pubspec.yaml`)
+
+---
+
+## Entry & bootstrap
+
+- `lib/main.dart`: `WidgetsFlutterBinding` → load `ThemeSettings` → `initSupabase()` → `profileRoleNotifier` if session → auth listener → `FcmService.init()` → `ProviderScope` + `MaterialApp.router` (`appRouter`, theme from `themeSettingsProvider`).
+
+---
+
+## Config & secrets
+
+- **Supabase:** `SUPABASE_URL` / `SUPABASE_ANON_KEY` via `--dart-define` or `lib/core/supabase_bootstrap.dart` fallbacks (if present).
+- **Firebase:** `lib/firebase_options.dart`, `android/app/google-services.json` — do not commit private keys.
+- **FCM Edge:** `FCM_SERVICE_ACCOUNT_JSON` on Supabase; use `scripts/set-fcm-secret.ps1` on Windows (avoid UTF-8 BOM breaking `secrets set`).
+- `.gitignore`: exclude `*firebase-adminsdk*.json`, `secrets-fcm.env`, service accounts.
+
+---
+
+## Roles & auth
+
+- `public.users.id` = `auth.users.id`. Phone OTP login.
+- JWT / app metadata **role**: `kRoleAdmin`, `kRoleStudent`, `kRoleTeacher` (`lib/core/constants.dart`).
+- Student auth email: `{phone}@student.radiance.local` — must match Edge `create-student` and helpers in `constants.dart`.
+
+---
+
+## Routing (`lib/app/router.dart`)
+
+- **GoRouter** with `refreshListenable` on auth + `profileRoleNotifier`.
+- Route order matters (e.g. `/admin/courses/:id/notice` **before** `/admin/courses/:id`).
+- Prefixes: `/admin/*`, `/student/*`, `/teacher/*`; splash `/`, public `/home`, `/login`.
+- Typos redirect: `/students/doubts` → `/student/doubts`.
+
+---
+
+## UI conventions
+
+- **Bengali copy** in UI where specified — use `GoogleFonts.hindSiliguri()`; Latin/numbers often `GoogleFonts.nunito()`.
+- **Code & comments:** English.
+- **Theme:** `lib/app/theme.dart` — primary `0xFF1A3C6E`, accent `0xFFF5A623`.
+- **AppBar + drawer:** use `leading: const AppBarDrawerLeading()` and `leadingWidth: leadingWidthForDrawer(context)` from the same feature’s drawer export — **do not** pass a `context` that is not under the `Scaffold` (e.g. State’s context without scaffold ancestor) or the menu button breaks.
+- **Admin shell (responsive):** use **`AdminResponsiveScaffold`** (`lib/features/admin/widgets/admin_responsive_scaffold.dart`) for admin screens — **narrow** (under `kAdminWideBreakpoint`, 900px): drawer + app bar; **wide**: permanent side nav + inner scaffold. Use **`constrainBodyWidth: false`** for full-bleed flows (e.g. attendance taking, chats). Optional: `toolbarHeight`, `resizeToAvoidBottomInset`, `bottom` (e.g. `TabBar`). **`AdminDrawer`** remains for narrow layout only (provided by the scaffold, not duplicated per screen).
+
+---
+
+## Architecture
+
+- **Repositories** own all Supabase I/O; screens/widgets call repositories or Riverpod providers.
+- Prefer **ConsumerWidget** / **ConsumerStatefulWidget** when using `ref`.
+- Table names: **`kTable*`** in `lib/core/constants.dart` — keep in sync with migrations.
+
+---
+
+## Notable features (pointers)
+
+| Area | Location hints |
+|------|------------------|
+| Notifications | `lib/features/notifications/`; triggers `supabase/migrations/20260409280000_message_notification_triggers.sql` |
+| FCM / Edge | `NotificationEdgeService`, `supabase/functions/send-notification` |
+| Doubts | `DoubtChatScreen` (`DoubtChatShell`), `StaffDoubtInboxScreen`, stream empty-guard + refetch after send |
+| Community | `community_chat_screen.dart` (`useAdminShell` for admin course chats); RLS `20260409270000_community_users_rls_and_storage.sql` |
+| Admin payments / exams | hubs, `ResultCalculator`, publish + notifications |
+
+---
+
+## Quality
+
+- Run **`dart analyze`** before large merges.
+- After `@riverpod` / generated provider edits: **build_runner** as above.

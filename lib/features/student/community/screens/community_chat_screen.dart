@@ -17,8 +17,8 @@ import '../../../../app/theme.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/storage_upload_hint.dart';
 import '../../../../core/supabase_client.dart';
-import '../../../../app/widgets/app_bar_drawer_leading.dart';
 import '../../../../features/admin/widgets/admin_drawer.dart';
+import '../../../../features/admin/widgets/admin_responsive_scaffold.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../widgets/student_drawer.dart';
@@ -46,6 +46,32 @@ class CommunityChatScreen extends ConsumerStatefulWidget {
 class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
   Widget _shellDrawer() =>
       widget.useAdminShell ? const AdminDrawer() : const StudentDrawer();
+
+  Widget _communityShell({
+    required Widget title,
+    List<Widget>? actions,
+    required Widget body,
+  }) {
+    if (widget.useAdminShell) {
+      return AdminResponsiveScaffold(
+        title: title,
+        actions: actions,
+        constrainBodyWidth: false,
+        body: body,
+      );
+    }
+    return Scaffold(
+      drawer: _shellDrawer(),
+      appBar: AppBar(
+        leading: const AppBarDrawerLeading(),
+        automaticallyImplyLeading: false,
+        leadingWidth: leadingWidthForDrawer(context),
+        title: title,
+        actions: actions,
+      ),
+      body: body,
+    );
+  }
 
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
@@ -539,55 +565,43 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
     return userAsync.when(
       data: (user) {
         if (user == null) {
-          return Scaffold(
-            drawer: _shellDrawer(),
-            appBar: AppBar(
-              leading: const AppBarDrawerLeading(),
-              automaticallyImplyLeading: false,
-              leadingWidth: leadingWidthForDrawer(context),
-              title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-            ),
+          return _communityShell(
+            title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
             body: const Center(child: Text('লগইন প্রয়োজন')),
           );
         }
         final uid = user.id;
 
-        return Scaffold(
-          drawer: _shellDrawer(),
-          appBar: AppBar(
-            leading: const AppBarDrawerLeading(),
-            automaticallyImplyLeading: false,
-            leadingWidth: leadingWidthForDrawer(context),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
+        return _communityShell(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.groupName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.hindSiliguri(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (!_loadingMeta)
                 Text(
-                  widget.groupName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.hindSiliguri(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                  '$_memberCount জন সদস্য',
+                  style: GoogleFonts.nunito(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                if (!_loadingMeta)
-                  Text(
-                    '$_memberCount জন সদস্য',
-                    style: GoogleFonts.nunito(
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outline),
-                onPressed: _showGroupInfo,
-              ),
             ],
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.info_outline),
+              onPressed: _showGroupInfo,
+            ),
+          ],
           body: LayoutBuilder(
             builder: (context, constraints) {
               final contentWidth = min(constraints.maxWidth, 720.0);
@@ -748,24 +762,12 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
           ),
         );
       },
-      loading: () => Scaffold(
-        drawer: _shellDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        ),
+      loading: () => _communityShell(
+        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => Scaffold(
-        drawer: _shellDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        ),
+      error: (e, _) => _communityShell(
+        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
         body: Center(child: Text('$e')),
       ),
     );

@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/enrollment_model.dart';
 import '../../../../shared/models/payment_model.dart';
 import '../../../../shared/models/result_model.dart';
@@ -74,22 +74,16 @@ class StudentProfileScreen extends ConsumerWidget {
         final u = b.student;
         return DefaultTabController(
           length: 4,
-          child: Scaffold(
-            drawer: const AdminDrawer(),
-            appBar: AppBar(
-              leading: const AppBarDrawerLeading(),
-              automaticallyImplyLeading: false,
-              leadingWidth: leadingWidthForDrawer(context),
-              title: Text(u.fullNameBn, style: GoogleFonts.hindSiliguri()),
-              bottom: TabBar(
-                isScrollable: true,
-                tabs: [
-                  Tab(child: Text('তথ্য', style: GoogleFonts.hindSiliguri())),
-                  Tab(child: Text('কোর্স', style: GoogleFonts.hindSiliguri())),
-                  Tab(child: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri())),
-                  Tab(child: Text('ফলাফল', style: GoogleFonts.hindSiliguri())),
-                ],
-              ),
+          child: AdminResponsiveScaffold(
+            title: Text(u.fullNameBn, style: GoogleFonts.hindSiliguri()),
+            bottom: TabBar(
+              isScrollable: true,
+              tabs: [
+                Tab(child: Text('তথ্য', style: GoogleFonts.hindSiliguri())),
+                Tab(child: Text('কোর্স', style: GoogleFonts.hindSiliguri())),
+                Tab(child: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri())),
+                Tab(child: Text('ফলাফল', style: GoogleFonts.hindSiliguri())),
+              ],
             ),
             body: TabBarView(
               children: [
@@ -109,24 +103,12 @@ class StudentProfileScreen extends ConsumerWidget {
           ),
         );
       },
-      loading: () => Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
-        ),
+      loading: () => AdminResponsiveScaffold(
+        title: Text('লোড হচ্ছে…', style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => Scaffold(
-        drawer: const AdminDrawer(),
-        appBar: AppBar(
-          leading: const AppBarDrawerLeading(),
-          automaticallyImplyLeading: false,
-          leadingWidth: leadingWidthForDrawer(context),
-          title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
-        ),
+      error: (e, _) => AdminResponsiveScaffold(
+        title: Text('ত্রুটি', style: GoogleFonts.hindSiliguri()),
         body: Center(child: Text('$e')),
       ),
     );

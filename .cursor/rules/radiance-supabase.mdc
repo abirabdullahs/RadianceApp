@@ -1,0 +1,13 @@
+---
+description: Supabase migrations & Edge — Radiance DB and serverless conventions
+globs: supabase/**/*
+alwaysApply: false
+---
+
+# Supabase (Radiance)
+
+- **Migrations:** `supabase/migrations/` — ordered filenames; apply via Supabase CLI/dashboard. Keep RLS policies aligned with app roles (`admin` / `student` / `teacher`).
+- **Edge Functions:** `supabase/functions/*` — read each `index.ts` header for env vars and JWT expectations.
+- **Triggers:** message → `notifications` rows (e.g. community/doubt) live in migrations; separate from client-triggered FCM.
+- **Storage buckets:** `kStorageBucket*` in `lib/core/constants.dart` — create/configure in dashboard to match.
+- **Reference:** `plan/03_database_roadmap.md` and newer migration files for table design.

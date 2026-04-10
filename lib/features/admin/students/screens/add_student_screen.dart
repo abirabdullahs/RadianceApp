@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/constants.dart';
-import '../../widgets/admin_drawer.dart';
+import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/user_model.dart';
 import '../repositories/student_repository.dart';
 
@@ -214,16 +214,10 @@ class _AddStudentScreenState extends State<AddStudentScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      drawer: const AdminDrawer(),
-      appBar: AppBar(
-        leading: const AppBarDrawerLeading(),
-        automaticallyImplyLeading: false,
-        leadingWidth: leadingWidthForDrawer(context),
-        title: Text(
-          'নতুন শিক্ষার্থী যোগ করুন',
-          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-        ),
+    return AdminResponsiveScaffold(
+      title: Text(
+        'নতুন শিক্ষার্থী যোগ করুন',
+        style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
       ),
       body: Stack(
         children: [
