@@ -352,6 +352,107 @@ class StudentRepository {
     };
   }
 
+  Future<List<Map<String, String>>> getStudentAttendanceCourses(String studentId) async {
+    final en = await _client
+        .from(kTableEnrollments)
+        .select('course_id')
+        .eq('student_id', studentId)
+        .eq('status', EnrollmentStatus.active.toJson());
+    final ids = (en as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['course_id'] as String)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return const <Map<String, String>>[];
+    final rows = await _client
+        .from(kTableCourses)
+        .select('id, name')
+        .inFilter('id', ids)
+        .order('name', ascending: true);
+    return (rows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .map((m) => <String, String>{
+              'id': m['id'] as String? ?? '',
+              'name': m['name'] as String? ?? 'Course',
+            })
+        .where((m) => (m['id'] ?? '').isNotEmpty)
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> getStudentCourseAttendanceMonthly({
+    required String studentId,
+    required String courseId,
+    required DateTime month,
+  }) async {
+    final start = DateTime.utc(month.year, month.month, 1);
+    final end = DateTime.utc(month.year, month.month + 1, 0);
+    final sessions = await _client
+        .from(kTableAttendanceSessions)
+        .select('id, date')
+        .eq('course_id', courseId)
+        .gte('date', _dateToSql(start))
+        .lte('date', _dateToSql(end))
+        .order('date', ascending: true);
+
+    final sessionRows = (sessions as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    if (sessionRows.isEmpty) {
+      return <String, dynamic>{
+        'total_sessions': 0,
+        'present': 0,
+        'absent': 0,
+        'late': 0,
+        'percentage': null,
+        'calendar': <String, String>{},
+      };
+    }
+    final sessionIds = sessionRows.map((s) => s['id'] as String).toList();
+    final recs = await _client
+        .from(kTableAttendanceRecords)
+        .select('session_id, status')
+        .eq('student_id', studentId)
+        .inFilter('session_id', sessionIds);
+    final statusBySession = <String, String>{};
+    for (final raw in recs as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      statusBySession[m['session_id'] as String] = m['status'] as String? ?? 'absent';
+    }
+
+    var present = 0;
+    var absent = 0;
+    var late = 0;
+    final calendar = <String, String>{};
+    for (final s in sessionRows) {
+      final sid = s['id'] as String;
+      final date = s['date'] as String;
+      final st = statusBySession[sid] ?? 'absent';
+      calendar[date] = st;
+      switch (st) {
+        case 'present':
+          present++;
+          break;
+        case 'late':
+          late++;
+          break;
+        case 'absent':
+        default:
+          absent++;
+          break;
+      }
+    }
+    final total = present + absent + late;
+    final pct = total == 0 ? null : ((present + late) / total) * 100.0;
+
+    return <String, dynamic>{
+      'total_sessions': total,
+      'present': present,
+      'absent': absent,
+      'late': late,
+      'percentage': pct,
+      'calendar': calendar,
+    };
+  }
+
   Future<List<ResultModel>> getStudentResults(String studentId) async {
     final rows = await _client
         .from(kTableResults)

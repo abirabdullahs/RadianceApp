@@ -99,6 +99,38 @@ class AttendanceMonthlyStudentSummary {
   final double percentage;
 }
 
+class AttendanceWarningRecipient {
+  const AttendanceWarningRecipient({
+    required this.studentId,
+    required this.studentNameBn,
+    required this.studentCode,
+    required this.phone,
+    required this.guardianPhone,
+    required this.percentage,
+  });
+
+  final String studentId;
+  final String studentNameBn;
+  final String? studentCode;
+  final String? phone;
+  final String? guardianPhone;
+  final double percentage;
+}
+
+class AttendanceWeeklyRecipient {
+  const AttendanceWeeklyRecipient({
+    required this.studentId,
+    required this.studentNameBn,
+    required this.studentCode,
+    required this.percentage,
+  });
+
+  final String studentId;
+  final String studentNameBn;
+  final String? studentCode;
+  final double percentage;
+}
+
 /// Attendance sessions and per-student records (Supabase).
 class AttendanceRepository {
   AttendanceRepository({SupabaseClient? client}) : _client = client ?? supabaseClient;
@@ -406,6 +438,84 @@ class AttendanceRepository {
       });
     }
     return out;
+  }
+
+  Future<List<AttendanceWarningRecipient>> getWarningRecipientsForMonth({
+    required String courseId,
+    required DateTime month,
+    int thresholdPct = 75,
+  }) async {
+    final rows = await getCourseMonthlySummary(courseId: courseId, month: month);
+    if (rows.isEmpty) return const <AttendanceWarningRecipient>[];
+    final warning = rows.where((e) => e.percentage < thresholdPct).toList();
+    if (warning.isEmpty) return const <AttendanceWarningRecipient>[];
+    final ids = warning.map((e) => e.studentId).toList();
+    final users = await _client
+        .from(kTableUsers)
+        .select('id, phone, guardian_phone')
+        .inFilter('id', ids);
+    final contactById = <String, Map<String, dynamic>>{};
+    for (final raw in users as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      contactById[m['id'] as String] = m;
+    }
+    return warning
+        .map((e) => AttendanceWarningRecipient(
+              studentId: e.studentId,
+              studentNameBn: e.studentNameBn,
+              studentCode: e.studentCode,
+              phone: contactById[e.studentId]?['phone'] as String?,
+              guardianPhone: contactById[e.studentId]?['guardian_phone'] as String?,
+              percentage: e.percentage,
+            ))
+        .toList();
+  }
+
+  Future<List<AttendanceWeeklyRecipient>> getWeeklyRecipients({
+    required String courseId,
+  }) async {
+    final end = DateTime.now();
+    final start = end.subtract(const Duration(days: 6));
+    final sessions = await _client
+        .from(kTableAttendanceSessions)
+        .select('id')
+        .eq('course_id', courseId)
+        .gte('date', _sqlDate(start))
+        .lte('date', _sqlDate(end));
+    final sessionIds = (sessions as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['id'] as String)
+        .toList();
+    if (sessionIds.isEmpty) return const <AttendanceWeeklyRecipient>[];
+    final recs = await _client
+        .from(kTableAttendanceRecords)
+        .select('student_id, status, users!inner(full_name_bn, student_id)')
+        .inFilter('session_id', sessionIds);
+    final agg = <String, _Agg>{};
+    for (final raw in recs as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final uid = m['student_id'] as String? ?? '';
+      if (uid.isEmpty) continue;
+      final u = Map<String, dynamic>.from(m['users'] as Map);
+      final a = agg.putIfAbsent(
+        uid,
+        () => _Agg(studentId: uid, studentNameBn: u['full_name_bn'] as String? ?? '—', studentCode: u['student_id'] as String?),
+      );
+      a.total++;
+      final st = m['status'] as String? ?? 'absent';
+      if (st == 'present' || st == 'late') {
+        a.present++;
+      } else {
+        a.absent++;
+      }
+    }
+    return agg.values
+        .map((a) => AttendanceWeeklyRecipient(
+              studentId: a.studentId,
+              studentNameBn: a.studentNameBn,
+              studentCode: a.studentCode,
+              percentage: a.total == 0 ? 0 : (a.present * 100.0) / a.total,
+            ))
+        .toList();
   }
 
   Future<AttendanceSettingsModel> getAttendanceSettings() async {

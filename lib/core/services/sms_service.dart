@@ -72,6 +72,30 @@ class SmsService {
     });
   }
 
+  Future<void> queueSms({
+    required String phone,
+    required String templateKey,
+    required Map<String, String> vars,
+    String? fallbackTemplate,
+  }) async {
+    final to = _normalizeBdPhone(phone);
+    if (to.isEmpty) {
+      throw ArgumentError('Invalid phone number');
+    }
+    final tpl = await _getTemplateByKey(templateKey);
+    final text = _renderTemplate(
+      (tpl?.isActive ?? false) ? tpl!.body : (fallbackTemplate ?? ''),
+      vars,
+    );
+    if (text.trim().isEmpty) return;
+    await _client.from(kTableSmsLogs).insert(<String, dynamic>{
+      'to_phone': to,
+      'message': text,
+      'gateway': 'ssl_wireless',
+      'status': 'pending',
+    });
+  }
+
   Future<List<SmsTemplateModel>> listTemplates() async {
     final rows = await _client
         .from(kTableSmsTemplates)

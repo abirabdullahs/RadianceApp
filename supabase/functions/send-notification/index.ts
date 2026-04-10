@@ -20,6 +20,8 @@ type Body = {
   body?: string;
   action_route?: string;
   type?: string;
+  mode?: "explicit" | "queued";
+  limit?: number;
 };
 
 async function getFcmAccessToken(serviceAccount: Record<string, unknown>): Promise<string> {
@@ -126,63 +128,69 @@ Deno.serve(async (req: Request) => {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const PUSH_CRON_SECRET = Deno.env.get("PUSH_CRON_SECRET");
 
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Missing Authorization" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) {
-    return new Response(JSON.stringify({ error: "Empty bearer token" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
-  if (userErr || !userData.user) {
-    return new Response(
-      JSON.stringify({ error: userErr?.message ?? "Invalid session" }),
-      {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
+  const cronSecret = req.headers.get("x-cron-secret");
+  const hasValidCronSecret = !!PUSH_CRON_SECRET && cronSecret === PUSH_CRON_SECRET;
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: callerRow, error: callerErr } = await admin
-    .from("users")
-    .select("role")
-    .eq("id", userData.user.id)
-    .maybeSingle();
-
-  if (callerErr) {
-    return new Response(JSON.stringify({ error: callerErr.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const role = (callerRow as { role?: string } | null)?.role;
-  if (role !== "admin" && role !== "teacher") {
-    return new Response(
-      JSON.stringify({ error: "Only admin or teacher can send push" }),
-      {
-        status: 403,
+  if (!hasValidCronSecret) {
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Missing Authorization" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+      });
+    }
+
+    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!jwt) {
+      return new Response(JSON.stringify({ error: "Empty bearer token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
+    if (userErr || !userData.user) {
+      return new Response(
+        JSON.stringify({ error: userErr?.message ?? "Invalid session" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const { data: callerRow, error: callerErr } = await admin
+      .from("users")
+      .select("role")
+      .eq("id", userData.user.id)
+      .maybeSingle();
+
+    if (callerErr) {
+      return new Response(JSON.stringify({ error: callerErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const role = (callerRow as { role?: string } | null)?.role;
+    if (role !== "admin" && role !== "teacher") {
+      return new Response(
+        JSON.stringify({ error: "Only admin or teacher can send push" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
   }
 
   let bodyJson: Body;
@@ -199,19 +207,12 @@ Deno.serve(async (req: Request) => {
   const bodyText = (bodyJson.body ?? "").trim();
   const actionRoute = (bodyJson.action_route ?? "").trim();
   const type = (bodyJson.type ?? "announcement").trim();
+  const mode = bodyJson.mode ?? ((userIds.length === 0 || !title || !bodyText) ? "queued" : "explicit");
+  const limit = Math.min(Math.max(Number(bodyJson.limit ?? 300), 1), 1000);
 
-  if (userIds.length === 0) {
+  if (mode === "explicit" && (userIds.length === 0 || !title || !bodyText)) {
     return new Response(
-      JSON.stringify({ error: "user_ids is required and must be non-empty" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
-  if (!title || !bodyText) {
-    return new Response(
-      JSON.stringify({ error: "title and body are required" }),
+      JSON.stringify({ error: "explicit mode requires user_ids, title, body" }),
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -235,82 +236,165 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { data: userRows, error: fetchErr } = await admin
-    .from("users")
-    .select("id, fcm_token")
-    .in("id", userIds);
-
-  if (fetchErr) {
-    return new Response(JSON.stringify({ error: fetchErr.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  const rows = (userRows ?? []) as { id: string; fcm_token: string | null }[];
-
-  const dataPayload: Record<string, string> = {
-    action_route: actionRoute,
-    type,
-    title,
-    body: bodyText,
-  };
-
   const results: {
     user_id: string;
     sent: boolean;
     skip?: string;
     error?: string;
+    notification_id?: string;
   }[] = [];
+  let attempted = 0;
+  let sentCount = 0;
 
-  for (const row of rows) {
-    const token = row.fcm_token?.trim();
-    if (!token) {
-      results.push({ user_id: row.id, sent: false, skip: "no_fcm_token" });
-      continue;
-    }
-
-    const r = await sendFcmV1(
-      projectId,
-      accessToken,
-      token,
-      title,
-      bodyText,
-      dataPayload,
-    );
-
-    if (r.ok) {
-      results.push({ user_id: row.id, sent: true });
-    } else {
-      results.push({
-        user_id: row.id,
-        sent: false,
-        error: `${r.status}: ${r.detail}`,
+  if (mode === "queued") {
+    const { data: pendingRows, error: pendingErr } = await admin
+      .from("notifications")
+      .select("id, user_id, title, body, type, action_route")
+      .eq("fcm_sent", false)
+      .not("user_id", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(limit);
+    if (pendingErr) {
+      return new Response(JSON.stringify({ error: pendingErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-  }
-
-  const sentUserIds = results.filter((x) => x.sent).map((x) => x.user_id);
-  if (sentUserIds.length > 0) {
-    const { error: upErr } = await admin
-      .from("notifications")
-      .update({ fcm_sent: true })
-      .in("user_id", sentUserIds)
-      .eq("title", title)
-      .eq("body", bodyText)
-      .eq("fcm_sent", false);
-
-    if (upErr) {
-      console.error("notifications fcm_sent update:", upErr.message);
+    const pending = (pendingRows ?? []) as {
+      id: string;
+      user_id: string;
+      title: string;
+      body: string;
+      type: string | null;
+      action_route: string | null;
+    }[];
+    const uniqueUserIds = [...new Set(pending.map((p) => p.user_id).filter(Boolean))];
+    if (uniqueUserIds.length > 0) {
+      const { data: userRows, error: userErr } = await admin
+        .from("users")
+        .select("id, fcm_token")
+        .in("id", uniqueUserIds);
+      if (userErr) {
+        return new Response(JSON.stringify({ error: userErr.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const tokenByUser = new Map<string, string>();
+      for (const raw of (userRows ?? []) as { id: string; fcm_token: string | null }[]) {
+        if (raw.fcm_token?.trim()) tokenByUser.set(raw.id, raw.fcm_token.trim());
+      }
+      attempted = pending.length;
+      const sentNotificationIds: string[] = [];
+      for (const p of pending) {
+        const token = tokenByUser.get(p.user_id);
+        if (!token) {
+          results.push({ user_id: p.user_id, sent: false, skip: "no_fcm_token", notification_id: p.id });
+          continue;
+        }
+        const dataPayload: Record<string, string> = {
+          action_route: (p.action_route ?? "").trim(),
+          type: (p.type ?? "announcement").trim(),
+          title: p.title,
+          body: p.body,
+        };
+        const r = await sendFcmV1(
+          projectId,
+          accessToken,
+          token,
+          p.title,
+          p.body,
+          dataPayload,
+        );
+        if (r.ok) {
+          sentCount++;
+          sentNotificationIds.push(p.id);
+          results.push({ user_id: p.user_id, sent: true, notification_id: p.id });
+        } else {
+          results.push({
+            user_id: p.user_id,
+            sent: false,
+            error: `${r.status}: ${r.detail}`,
+            notification_id: p.id,
+          });
+        }
+      }
+      if (sentNotificationIds.length > 0) {
+        const { error: upErr } = await admin
+          .from("notifications")
+          .update({ fcm_sent: true })
+          .in("id", sentNotificationIds);
+        if (upErr) {
+          console.error("notifications fcm_sent update:", upErr.message);
+        }
+      }
+    }
+  } else {
+    const { data: userRows, error: fetchErr } = await admin
+      .from("users")
+      .select("id, fcm_token")
+      .in("id", userIds);
+    if (fetchErr) {
+      return new Response(JSON.stringify({ error: fetchErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const rows = (userRows ?? []) as { id: string; fcm_token: string | null }[];
+    attempted = rows.length;
+    const dataPayload: Record<string, string> = {
+      action_route: actionRoute,
+      type,
+      title,
+      body: bodyText,
+    };
+    for (const row of rows) {
+      const token = row.fcm_token?.trim();
+      if (!token) {
+        results.push({ user_id: row.id, sent: false, skip: "no_fcm_token" });
+        continue;
+      }
+      const r = await sendFcmV1(
+        projectId,
+        accessToken,
+        token,
+        title,
+        bodyText,
+        dataPayload,
+      );
+      if (r.ok) {
+        sentCount++;
+        results.push({ user_id: row.id, sent: true });
+      } else {
+        results.push({
+          user_id: row.id,
+          sent: false,
+          error: `${r.status}: ${r.detail}`,
+        });
+      }
+    }
+    const sentUserIds = results.filter((x) => x.sent).map((x) => x.user_id);
+    if (sentUserIds.length > 0) {
+      const { error: upErr } = await admin
+        .from("notifications")
+        .update({ fcm_sent: true })
+        .in("user_id", sentUserIds)
+        .eq("title", title)
+        .eq("body", bodyText)
+        .eq("fcm_sent", false);
+      if (upErr) {
+        console.error("notifications fcm_sent update:", upErr.message);
+      }
     }
   }
 
   return new Response(
     JSON.stringify({
       success: true,
+      mode,
       project_id: projectId,
-      attempted: rows.length,
-      sent: sentUserIds.length,
+      attempted,
+      sent: sentCount,
       results,
     }),
     {

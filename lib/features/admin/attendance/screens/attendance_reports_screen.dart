@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/services/attendance_notification_service.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../providers/attendance_providers.dart';
@@ -29,6 +30,7 @@ class _AttendanceReportsScreenState extends ConsumerState<AttendanceReportsScree
   late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month, 1);
   late final String _courseId = widget.courseId;
   String? _sessionId;
+  bool _sending = false;
 
   @override
   void initState() {
@@ -109,6 +111,7 @@ class _AttendanceReportsScreenState extends ConsumerState<AttendanceReportsScree
                       _WarningCard(
                         rows: warning,
                         onShare: () => _shareWarning(warning, courseName),
+                        onSendWarning: warning.isEmpty ? null : () => _sendWarningPushAndSms(),
                       ),
                     ],
                   );
@@ -128,6 +131,15 @@ class _AttendanceReportsScreenState extends ConsumerState<AttendanceReportsScree
                   }
                   return _TrendCard(points: snap.data!);
                 },
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _sending ? null : _sendWeeklyPush,
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: Text(
+                  _sending ? 'পাঠানো হচ্ছে...' : 'সাপ্তাহিক উপস্থিতি Push পাঠান',
+                  style: GoogleFonts.hindSiliguri(),
+                ),
               ),
             ],
           );
@@ -179,6 +191,43 @@ class _AttendanceReportsScreenState extends ConsumerState<AttendanceReportsScree
       b.writeln('${e.studentNameBn} (${e.studentCode ?? "—"}) - ${e.percentage.toStringAsFixed(1)}%');
     }
     await SharePlus.instance.share(ShareParams(text: b.toString(), subject: 'attendance_warning_list'));
+  }
+
+  Future<void> _sendWeeklyPush() async {
+    setState(() => _sending = true);
+    try {
+      final sent = await AttendanceNotificationService().sendWeeklyPushForCourse(courseId: _courseId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$sent জনকে weekly push কিউ করা হয়েছে', style: GoogleFonts.hindSiliguri())),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _sendWarningPushAndSms() async {
+    setState(() => _sending = true);
+    try {
+      final settings = await ref.read(attendanceRepositoryProvider).getAttendanceSettings();
+      final sent = await AttendanceNotificationService().sendWarningPushAndGuardianSms(
+        courseId: _courseId,
+        month: _month,
+        thresholdPct: settings.warningThresholdPct,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$sent জনের জন্য warning push/SMS কিউ হয়েছে', style: GoogleFonts.hindSiliguri())),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 }
 
@@ -248,9 +297,10 @@ class _MonthlyCard extends StatelessWidget {
 }
 
 class _WarningCard extends StatelessWidget {
-  const _WarningCard({required this.rows, required this.onShare});
+  const _WarningCard({required this.rows, required this.onShare, this.onSendWarning});
   final List<AttendanceMonthlyStudentSummary> rows;
   final VoidCallback onShare;
+  final VoidCallback? onSendWarning;
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +325,16 @@ class _WarningCard extends StatelessWidget {
                   title: Text(e.studentNameBn, style: GoogleFonts.hindSiliguri()),
                   subtitle: Text(e.studentCode ?? '—', style: GoogleFonts.nunito(fontSize: 12)),
                   trailing: Text('${e.percentage.toStringAsFixed(1)}%', style: GoogleFonts.nunito(fontWeight: FontWeight.bold, color: const Color(0xFFB91C1C))),
+                ),
+              ),
+            const SizedBox(height: 8),
+            if (onSendWarning != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: onSendWarning,
+                  icon: const Icon(Icons.sms_outlined),
+                  label: Text('Warning Push/SMS পাঠান', style: GoogleFonts.hindSiliguri()),
                 ),
               ),
           ],

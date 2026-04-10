@@ -177,11 +177,9 @@ class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen>
                 Row(
                   children: [
                     Expanded(
-                      child: _StatCard(
-                        label: 'এই মাস উপস্থিতি',
-                        value: d.attendancePct == null
-                            ? '—'
-                            : '${d.attendancePct!.toStringAsFixed(0)}%',
+                      child: _AttendanceWidgetCard(
+                        attendancePct: d.attendancePct,
+                        onTap: () => context.push('/student/attendance'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -307,6 +305,77 @@ class _StatCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(value, style: GoogleFonts.nunito(fontSize: 20, fontWeight: FontWeight.bold)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttendanceWidgetCard extends StatelessWidget {
+  const _AttendanceWidgetCard({
+    required this.attendancePct,
+    required this.onTap,
+  });
+
+  final double? attendancePct;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (attendancePct ?? 0).clamp(0, 100).toDouble();
+    final regular = pct >= 75;
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('📅 আমার উপস্থিতি', style: GoogleFonts.hindSiliguri(fontSize: 12)),
+              const SizedBox(height: 8),
+              Center(
+                child: SizedBox(
+                  width: 66,
+                  height: 66,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CircularProgressIndicator(
+                        value: pct / 100.0,
+                        strokeWidth: 7,
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation(
+                          regular ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                        ),
+                      ),
+                      Center(
+                        child: Text(
+                          attendancePct == null ? '—' : '${pct.toStringAsFixed(0)}%',
+                          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                regular ? '🟢 নিয়মিত' : '⚠️ সতর্কতা',
+                style: GoogleFonts.hindSiliguri(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: regular ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('বিস্তারিত →', style: GoogleFonts.hindSiliguri(fontSize: 11)),
+              ),
+            ],
+          ),
         ),
       ),
     );

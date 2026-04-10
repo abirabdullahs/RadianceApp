@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/supabase_client.dart';
 import '../../admin/students/repositories/student_repository.dart';
@@ -14,7 +15,9 @@ class StudentAttendanceScreen extends StatefulWidget {
 }
 
 class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
-  late Future<Map<String, dynamic>> _future;
+  late Future<_AttendanceVm> _future;
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  String? _courseId;
 
   @override
   void initState() {
@@ -22,11 +25,36 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
     _future = _load();
   }
 
-  Future<Map<String, dynamic>> _load() async {
+  Future<_AttendanceVm> _load() async {
     final uid = supabaseClient.auth.currentUser!.id;
-    final month = DateTime.now();
-    final ym = '${month.year}-${month.month.toString().padLeft(2, '0')}';
-    return StudentRepository().getStudentAttendanceSummary(uid, ym);
+    final repo = StudentRepository();
+    final courses = await repo.getStudentAttendanceCourses(uid);
+    if (courses.isEmpty) {
+      return _AttendanceVm(
+        courses: const [],
+        selectedCourseId: '',
+        month: _month,
+        data: const <String, dynamic>{},
+      );
+    }
+    final selected = _courseId ?? courses.first['id']!;
+    final data = await repo.getStudentCourseAttendanceMonthly(
+      studentId: uid,
+      courseId: selected,
+      month: _month,
+    );
+    return _AttendanceVm(
+      courses: courses,
+      selectedCourseId: selected,
+      month: _month,
+      data: data,
+    );
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
   }
 
   @override
@@ -40,48 +68,222 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction()],
       ),
-      body: FutureBuilder<Map<String, dynamic>>(
+      body: FutureBuilder<_AttendanceVm>(
         future: _future,
         builder: (context, snap) {
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final m = snap.data!;
+          final vm = snap.data!;
+          if (vm.courses.isEmpty) {
+            return Center(
+              child: Text('তুমি এখনো কোনো কোর্সে এনরোলড নও', style: GoogleFonts.hindSiliguri()),
+            );
+          }
+
+          final m = vm.data;
           final pct = m['percentage'] as double?;
           final total = m['total_sessions'] as int? ?? 0;
           final present = m['present'] as int? ?? 0;
-          return Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          final absent = m['absent'] as int? ?? 0;
+          final calendar = (m['calendar'] as Map?)?.map(
+                (k, v) => MapEntry(k.toString(), v.toString()),
+              ) ??
+              const <String, String>{};
+          final monthLabel = DateFormat.yMMMM().format(_month);
+
+          return RefreshIndicator(
+            onRefresh: () async => _reload(),
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                Text(
-                  'এই মাস',
-                  style: GoogleFonts.hindSiliguri(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: vm.selectedCourseId,
+                        decoration: InputDecoration(
+                          labelText: 'কোর্স',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: vm.courses
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c['id'],
+                                child: Text(c['name'] ?? 'Course', style: GoogleFonts.hindSiliguri()),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          _courseId = v;
+                          _reload();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        _month = DateTime(_month.year, _month.month - 1, 1);
+                        _reload();
+                      },
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          monthLabel,
+                          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        _month = DateTime(_month.year, _month.month + 1, 1);
+                        _reload();
+                      },
+                      icon: const Icon(Icons.chevron_right),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _statCard('মোট ক্লাস', '$total')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _statCard('উপস্থিত', '$present')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _statCard('অনুপস্থিত', '$absent')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pct == null
+                              ? 'উপস্থিতির হার: —'
+                              : 'উপস্থিতির হার: ${pct.toStringAsFixed(1)}%',
+                          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        LinearProgressIndicator(
+                          value: pct == null ? 0 : (pct / 100.0).clamp(0.0, 1.0),
+                          minHeight: 8,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          (pct ?? 0) < 75 ? '⚠️ সতর্কতা! উপস্থিতি ৭৫%-এর নিচে।' : '🟢 নিয়মিত উপস্থিতি',
+                          style: GoogleFonts.hindSiliguri(
+                            color: (pct ?? 0) < 75 ? const Color(0xFFB91C1C) : const Color(0xFF15803D),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'মোট সেশন: $total',
-                  style: GoogleFonts.hindSiliguri(),
-                ),
-                Text(
-                  'উপস্থিত: $present',
-                  style: GoogleFonts.hindSiliguri(),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  pct == null
-                      ? 'হার হিসাব করা যায়নি'
-                      : 'হার: ${pct.toStringAsFixed(1)}%',
-                  style: GoogleFonts.nunito(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                const SizedBox(height: 12),
+                _AttendanceCalendar(month: _month, statusByDate: calendar),
               ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _statCard(String label, String value) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Column(
+          children: [
+            Text(label, style: GoogleFonts.hindSiliguri(fontSize: 12)),
+            const SizedBox(height: 4),
+            Text(value, style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 18)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttendanceVm {
+  const _AttendanceVm({
+    required this.courses,
+    required this.selectedCourseId,
+    required this.month,
+    required this.data,
+  });
+  final List<Map<String, String>> courses;
+  final String selectedCourseId;
+  final DateTime month;
+  final Map<String, dynamic> data;
+}
+
+class _AttendanceCalendar extends StatelessWidget {
+  const _AttendanceCalendar({required this.month, required this.statusByDate});
+
+  final DateTime month;
+  final Map<String, String> statusByDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final firstWeekday = DateTime(month.year, month.month, 1).weekday % 7; // sun=0
+    final cells = <Widget>[];
+
+    const labels = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
+    for (final l in labels) {
+      cells.add(Center(child: Text(l, style: GoogleFonts.hindSiliguri(fontSize: 11, fontWeight: FontWeight.w600))));
+    }
+    for (var i = 0; i < firstWeekday; i++) {
+      cells.add(const SizedBox.shrink());
+    }
+    for (var day = 1; day <= daysInMonth; day++) {
+      final key = '${month.year.toString().padLeft(4, '0')}-${month.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+      final st = statusByDate[key];
+      final text = st == 'present' || st == 'late' ? '✅' : st == 'absent' ? '❌' : '⚪';
+      cells.add(
+        Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text('$day\n$text', textAlign: TextAlign.center, style: GoogleFonts.nunito(fontSize: 11)),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ক্যালেন্ডার ভিউ', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            GridView.count(
+              crossAxisCount: 7,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: cells,
+            ),
+            const SizedBox(height: 8),
+            Text('🟢 ✅ উপস্থিত   🔴 ❌ অনুপস্থিত   ⚪ ক্লাস নেই', style: GoogleFonts.hindSiliguri(fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
