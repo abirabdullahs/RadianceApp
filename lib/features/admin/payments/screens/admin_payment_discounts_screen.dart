@@ -132,6 +132,7 @@ class _AdminPaymentDiscountsScreenState
         courseNames[e.courseId] = e.courseId;
       }
     }
+    if (!mounted) return;
     String courseId = active.first.courseId;
     String? ruleId = rules.isNotEmpty ? rules.first.id : null;
     final customCtrl = TextEditingController();

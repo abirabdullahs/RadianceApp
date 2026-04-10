@@ -19,6 +19,9 @@ class SmsService {
     String? studentName,
   }) async {
     final to = _normalizeBdPhone(phone);
+    if (to.isEmpty) {
+      throw ArgumentError('Invalid phone number');
+    }
     final tpl = await _getTemplateByKey('payment_confirmation');
     final text = _renderTemplate(
       (tpl?.isActive ?? false) ? tpl!.body : _defaultPaymentTemplate,
@@ -47,6 +50,9 @@ class SmsService {
     required String amountLabel,
   }) async {
     final to = _normalizeBdPhone(phone);
+    if (to.isEmpty) {
+      throw ArgumentError('Invalid phone number');
+    }
     final tpl = await _getTemplateByKey('due_reminder');
     final text = _renderTemplate(
       (tpl?.isActive ?? false) ? tpl!.body : _defaultDueTemplate,
@@ -127,7 +133,7 @@ class SmsService {
     if (digits.length >= 10) {
       return digits.substring(digits.length - 11).padLeft(11, '0');
     }
-    return raw.length > 15 ? raw.substring(0, 15) : raw;
+    return '';
   }
 }
 

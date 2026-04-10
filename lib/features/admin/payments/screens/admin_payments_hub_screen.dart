@@ -107,10 +107,15 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
             month: month,
             force: false,
           );
+      if (out == null) {
+        throw Exception('No response from due generation function');
+      }
       ref.invalidate(filteredDuesEnrichedProvider);
       ref.invalidate(filteredPaymentsProvider);
       if (!mounted) return;
-      final affected = ((out?['result'] as Map?)?['affected'] ?? 0).toString();
+      final result =
+          out['result'] is Map ? Map<String, dynamic>.from(out['result'] as Map) : const <String, dynamic>{};
+      final affected = (result['affected'] ?? 0).toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
