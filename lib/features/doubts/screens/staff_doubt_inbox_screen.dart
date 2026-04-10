@@ -21,17 +21,20 @@ class StaffDoubtInboxScreen extends StatefulWidget {
 
 class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
   late Future<List<DoubtThreadModel>> _future;
+  late Future<Map<String, int>> _countsFuture;
   final _repo = DoubtRepository();
   Map<String, UserModel> _users = {};
+  String _statusFilter = 'all';
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    _countsFuture = _repo.getInboxCounts();
   }
 
   Future<List<DoubtThreadModel>> _load() async {
-    final list = await _repo.listAllForStaff();
+    final list = await _repo.listForStaff(status: _statusFilter);
     final ids = list.map((e) => e.studentId).toSet();
     _users = await _repo.loadUsersByIds(ids);
     return list;
@@ -64,15 +67,50 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
           }
           return RefreshIndicator(
             onRefresh: () async {
-              setState(() => _future = _load());
+              setState(() {
+                _future = _load();
+                _countsFuture = _repo.getInboxCounts();
+              });
               await _future;
             },
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: list.length,
+              itemCount: list.length + 1,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, i) {
-                final d = list[i];
+                if (i == 0) {
+                  return FutureBuilder<Map<String, int>>(
+                    future: _countsFuture,
+                    builder: (context, cSnap) {
+                      final c = cSnap.data ?? const <String, int>{};
+                      final open = c['open'] ?? 0;
+                      final active = c['inProgress'] ?? 0;
+                      final meeting = c['meetingScheduled'] ?? 0;
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _FilterChip(label: 'সব', selected: _statusFilter == 'all', onTap: () => _applyFilter('all')),
+                            _FilterChip(label: 'Open ($open)', selected: _statusFilter == 'open', onTap: () => _applyFilter('open')),
+                            _FilterChip(
+                              label: 'Chat ($active)',
+                              selected: _statusFilter == 'in_progress',
+                              onTap: () => _applyFilter('in_progress'),
+                            ),
+                            _FilterChip(
+                              label: 'Meeting ($meeting)',
+                              selected: _statusFilter == 'meeting_scheduled',
+                              onTap: () => _applyFilter('meeting_scheduled'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                }
+                final d = list[i - 1];
                 final preview = d.problemDescription.length > 80
                     ? '${d.problemDescription.substring(0, 80)}…'
                     : d.problemDescription;
@@ -87,7 +125,7 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
                     ),
                   ),
                   title: Text(
-                    _studentLabel(d.studentId),
+                    '${_studentLabel(d.studentId)} • ${d.title}',
                     style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
@@ -96,7 +134,13 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.hindSiliguri(fontSize: 13),
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Text(
+                    _statusLabel(d.status),
+                    style: GoogleFonts.hindSiliguri(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   onTap: () => context.push('$prefix/${d.id}'),
                 );
               },
@@ -115,7 +159,10 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
           const AppBarDrawerAction(),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() => _future = _load()),
+            onPressed: () => setState(() {
+              _future = _load();
+              _countsFuture = _repo.getInboxCounts();
+            }),
           ),
         ],
         body: body,
@@ -135,11 +182,55 @@ class _StaffDoubtInboxScreenState extends State<StaffDoubtInboxScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => setState(() => _future = _load()),
+            onPressed: () => setState(() {
+              _future = _load();
+              _countsFuture = _repo.getInboxCounts();
+            }),
           ),
         ],
       ),
       body: body,
+    );
+  }
+
+  void _applyFilter(String status) {
+    setState(() {
+      _statusFilter = status;
+      _future = _load();
+    });
+  }
+
+  String _statusLabel(DoubtStatus status) {
+    switch (status) {
+      case DoubtStatus.open:
+        return 'Open';
+      case DoubtStatus.inProgress:
+        return 'Chat';
+      case DoubtStatus.meetingScheduled:
+        return 'Meeting';
+      case DoubtStatus.solved:
+        return 'Solved';
+    }
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      label: Text(label, style: GoogleFonts.hindSiliguri()),
+      selected: selected,
+      onSelected: (_) => onTap(),
     );
   }
 }

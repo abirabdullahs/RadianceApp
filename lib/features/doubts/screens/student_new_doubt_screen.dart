@@ -18,6 +18,9 @@ class StudentNewDoubtScreen extends StatefulWidget {
 
 class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _subject = TextEditingController();
+  final _chapter = TextEditingController();
+  final _title = TextEditingController();
   final _desc = TextEditingController();
   final _repo = DoubtRepository();
   File? _image;
@@ -25,6 +28,9 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
 
   @override
   void dispose() {
+    _subject.dispose();
+    _chapter.dispose();
+    _title.dispose();
     _desc.dispose();
     super.dispose();
   }
@@ -39,6 +45,9 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
     setState(() => _submitting = true);
     try {
       final t = await _repo.createThread(
+        subject: _subject.text,
+        chapter: _chapter.text,
+        title: _title.text,
         problemDescription: _desc.text,
         problemImage: _image,
       );
@@ -79,6 +88,43 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                     fontWeight: FontWeight.w700,
                     color: context.themePrimary,
                   ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _subject,
+                  enabled: !_submitting,
+                  decoration: InputDecoration(
+                    labelText: 'বিষয় (ঐচ্ছিক)',
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _chapter,
+                  enabled: !_submitting,
+                  decoration: InputDecoration(
+                    labelText: 'অধ্যায় (ঐচ্ছিক)',
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _title,
+                  enabled: !_submitting,
+                  decoration: InputDecoration(
+                    labelText: 'শিরোনাম *',
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
+                  validator: (v) {
+                    if (v == null || v.trim().length < 5) return 'শিরোনাম লিখুন';
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 12),
                 TextFormField(

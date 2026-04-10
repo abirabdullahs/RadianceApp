@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../app/theme.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
+import '../../../core/supabase_client.dart';
 import '../../../shared/models/doubt_thread_model.dart';
 import '../repositories/doubt_repository.dart';
 import '../../student/widgets/student_drawer.dart';
@@ -18,12 +19,17 @@ class StudentDoubtsListScreen extends StatefulWidget {
 
 class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
   late Future<List<DoubtThreadModel>> _future;
+  late Future<Map<String, int>> _statsFuture;
   final _repo = DoubtRepository();
 
   @override
   void initState() {
     super.initState();
     _future = _repo.listMyDoubts();
+    final uid = supabaseClient.auth.currentUser?.id;
+    _statsFuture = uid == null
+        ? Future.value({'totalSubmitted': 0, 'totalSolved': 0})
+        : _repo.getMyStats(uid);
   }
 
   Future<void> _confirmPurge(DoubtThreadModel d) async {
@@ -54,7 +60,9 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('মেসেজ মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
       );
-      setState(() => _future = _repo.listMyDoubts());
+      setState(() {
+        _future = _repo.listMyDoubts();
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -103,15 +111,42 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
           }
           return RefreshIndicator(
             onRefresh: () async {
-              setState(() => _future = _repo.listMyDoubts());
+              final uid = supabaseClient.auth.currentUser?.id;
+              setState(() {
+                _future = _repo.listMyDoubts();
+                if (uid != null) _statsFuture = _repo.getMyStats(uid);
+              });
               await _future;
             },
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: list.length,
+              itemCount: list.length + 1,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, i) {
-                final d = list[i];
+                if (i == 0) {
+                  return FutureBuilder<Map<String, int>>(
+                    future: _statsFuture,
+                    builder: (context, statsSnap) {
+                      final submitted = statsSnap.data?['totalSubmitted'] ?? 0;
+                      final solved = statsSnap.data?['totalSolved'] ?? 0;
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _StatCard(label: 'জমা', value: '$submitted'),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _StatCard(label: 'Solved', value: '$solved'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                }
+                final d = list[i - 1];
                 final preview = d.problemDescription.length > 100
                     ? '${d.problemDescription.substring(0, 100)}…'
                     : d.problemDescription;
@@ -121,13 +156,13 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
                     color: d.status == DoubtStatus.solved ? Colors.green : context.themePrimary,
                   ),
                   title: Text(
-                    preview,
+                    d.title.isNotEmpty ? d.title : preview,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    d.status == DoubtStatus.solved ? 'সমাধান হয়েছে' : 'খোলা',
+                    _statusText(d.status),
                     style: GoogleFonts.hindSiliguri(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -136,8 +171,16 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) {
                       if (v == 'purge') _confirmPurge(d);
+                      if (v == 'join' && d.meetingLink != null && d.meetingLink!.isNotEmpty) {
+                        context.push('/student/doubts/${d.id}');
+                      }
                     },
                     itemBuilder: (ctx) => [
+                      if (d.status == DoubtStatus.meetingScheduled)
+                        PopupMenuItem(
+                          value: 'join',
+                          child: Text('Meeting দেখুন', style: GoogleFonts.hindSiliguri()),
+                        ),
                       PopupMenuItem(
                         value: 'purge',
                         child: Text('চ্যাট মুছুন', style: GoogleFonts.hindSiliguri()),
@@ -150,6 +193,42 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  String _statusText(DoubtStatus s) {
+    switch (s) {
+      case DoubtStatus.open:
+        return 'খোলা';
+      case DoubtStatus.inProgress:
+        return 'চ্যাট চলছে';
+      case DoubtStatus.meetingScheduled:
+        return 'Meeting scheduled';
+      case DoubtStatus.solved:
+        return 'সমাধান হয়েছে';
+    }
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Text(label, style: GoogleFonts.hindSiliguri(fontSize: 12)),
+            const SizedBox(height: 4),
+            Text(value, style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w700)),
+          ],
+        ),
       ),
     );
   }

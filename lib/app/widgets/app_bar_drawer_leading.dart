@@ -35,6 +35,11 @@ class AppBarDrawerAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final path = GoRouterState.of(context).uri.path;
+    if (path.startsWith('/student')) {
+      // Student menu is provided from the bottom navigation shell.
+      return const SizedBox.shrink();
+    }
     final scaffoldState = Scaffold.maybeOf(context);
     if (scaffoldState == null || !scaffoldState.hasDrawer) {
       return const SizedBox.shrink();

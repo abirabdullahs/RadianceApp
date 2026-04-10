@@ -75,8 +75,11 @@ const String kTableComplaints = 'complaints';
 const String kTableHomeContent = 'home_content';
 const String kTableSuggestions = 'suggestions';
 const String kTableSuggestionLikes = 'suggestion_likes';
-const String kTableDoubtThreads = 'doubt_threads';
+const String kTableDoubts = 'doubts';
+@Deprecated('Use kTableDoubts')
+const String kTableDoubtThreads = kTableDoubts;
 const String kTableDoubtMessages = 'doubt_messages';
+const String kTableStudentDoubtStats = 'student_doubt_stats';
 const String kTableFeeServices = 'fee_services';
 const String kTablePaymentTypes = 'payment_types';
 const String kTablePaymentLedger = 'payment_ledger';

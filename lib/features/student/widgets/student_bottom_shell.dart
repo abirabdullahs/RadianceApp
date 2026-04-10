@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'student_drawer.dart';
-
 class StudentBottomShell extends StatelessWidget {
   const StudentBottomShell({
     super.key,
@@ -16,15 +14,13 @@ class StudentBottomShell extends StatelessWidget {
   int _selectedIndex() {
     if (location.startsWith('/student/notifications')) return 1;
     if (location.startsWith('/student/community')) return 2;
+    if (location.startsWith('/student/menu')) return 3;
     return 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final scaffoldKey = GlobalKey<ScaffoldState>();
     return Scaffold(
-      key: scaffoldKey,
-      drawer: const StudentDrawer(),
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex(),
@@ -46,7 +42,9 @@ class StudentBottomShell extends StatelessWidget {
               }
               break;
             case 3:
-              scaffoldKey.currentState?.openDrawer();
+              if (!location.startsWith('/student/menu')) {
+                context.go('/student/menu');
+              }
               break;
           }
         },

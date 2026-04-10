@@ -48,7 +48,9 @@ import '../features/student/payments/student_payments_screen.dart';
 import '../features/student/profile/student_edit_profile_screen.dart';
 import '../features/student/results/student_results_screen.dart';
 import '../features/student/screens/student_route_screens.dart';
+import '../features/student/screens/student_menu_screen.dart';
 import '../features/student/settings/student_settings_screen.dart';
+import '../features/student/widgets/student_bottom_shell.dart';
 import '../features/doubts/screens/doubt_chat_screen.dart';
 import '../features/doubts/screens/staff_doubt_inbox_screen.dart';
 import '../features/doubts/screens/student_doubts_list_screen.dart';
@@ -337,102 +339,114 @@ final GoRouter appRouter = GoRouter(
     ),
 
     // --- Student ---
-    GoRoute(
-      path: '/student',
-      builder: (context, state) => const StudentDashboardScreen(),
-    ),
-    GoRoute(
-      path: '/student/notifications',
-      builder: (context, state) => const NotificationsScreen(),
-    ),
-    // Doubt solve: literal `/student/doubts/new` must be before `/student/doubts/:id`.
-    GoRoute(
-      path: '/student/doubts',
-      builder: (context, state) => const StudentDoubtsListScreen(),
-    ),
-    GoRoute(
-      path: '/student/doubts/new',
-      builder: (context, state) => const StudentNewDoubtScreen(),
-    ),
-    GoRoute(
-      path: '/student/doubts/:id',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return DoubtChatScreen(doubtId: id, shell: DoubtChatShell.student);
-      },
-    ),
-    GoRoute(
-      path: '/student/courses',
-      builder: (context, state) => const StudentCoursesScreen(),
-    ),
-    GoRoute(
-      path: '/student/courses/:id',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return CourseDetailScreen(courseId: id);
-      },
-    ),
-    GoRoute(
-      path: '/student/notes/:chapterId',
-      builder: (context, state) {
-        final chapterId = state.pathParameters['chapterId']!;
-        return NotesScreen(chapterId: chapterId);
-      },
-    ),
-    GoRoute(
-      path: '/student/exams',
-      builder: (context, state) => const StudentExamsScreen(),
-    ),
-    GoRoute(
-      path: '/student/exams/:id/take',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return ExamTakingScreen(examId: id);
-      },
-    ),
-    GoRoute(
-      path: '/student/results',
-      builder: (context, state) => const StudentResultsScreen(),
-    ),
-    GoRoute(
-      path: '/student/payments',
-      builder: (context, state) => const StudentPaymentsScreen(),
-    ),
-    GoRoute(
-      path: '/student/attendance',
-      builder: (context, state) => const StudentAttendanceScreen(),
-    ),
-    GoRoute(
-      path: '/student/community/:groupId',
-      builder: (context, state) {
-        final groupId = state.pathParameters['groupId']!;
-        final name = state.uri.queryParameters['name'] ?? 'গ্রুপ';
-        return CommunityChatScreen(groupId: groupId, groupName: name);
-      },
-    ),
-    GoRoute(
-      path: '/student/community',
-      builder: (context, state) => const CommunityScreen(),
-    ),
-    GoRoute(
-      path: '/student/qbank',
-      builder: (context, state) => const QBankScreen(),
-    ),
-    GoRoute(
-      path: '/student/qbank/practice/:chapterId',
-      builder: (context, state) {
-        final chapterId = state.pathParameters['chapterId']!;
-        final chapter = state.uri.queryParameters['chapter'];
-        return QBankPracticeScreen(chapterId: chapterId, chapterName: chapter);
-      },
-    ),
-    GoRoute(
-      path: '/student/profile/edit',
-      builder: (context, state) => const StudentEditProfileScreen(),
-    ),
-    GoRoute(
-      path: '/student/settings',
-      builder: (context, state) => const StudentSettingsScreen(),
+    ShellRoute(
+      builder: (context, state, child) => StudentBottomShell(
+        location: state.uri.path,
+        child: child,
+      ),
+      routes: [
+        GoRoute(
+          path: '/student',
+          builder: (context, state) => const StudentDashboardScreen(),
+        ),
+        GoRoute(
+          path: '/student/notifications',
+          builder: (context, state) => const NotificationsScreen(),
+        ),
+        // Doubt solve: literal `/student/doubts/new` must be before `/student/doubts/:id`.
+        GoRoute(
+          path: '/student/doubts',
+          builder: (context, state) => const StudentDoubtsListScreen(),
+        ),
+        GoRoute(
+          path: '/student/doubts/new',
+          builder: (context, state) => const StudentNewDoubtScreen(),
+        ),
+        GoRoute(
+          path: '/student/doubts/:id',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return DoubtChatScreen(doubtId: id, shell: DoubtChatShell.student);
+          },
+        ),
+        GoRoute(
+          path: '/student/courses',
+          builder: (context, state) => const StudentCoursesScreen(),
+        ),
+        GoRoute(
+          path: '/student/courses/:id',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return CourseDetailScreen(courseId: id);
+          },
+        ),
+        GoRoute(
+          path: '/student/notes/:chapterId',
+          builder: (context, state) {
+            final chapterId = state.pathParameters['chapterId']!;
+            return NotesScreen(chapterId: chapterId);
+          },
+        ),
+        GoRoute(
+          path: '/student/exams',
+          builder: (context, state) => const StudentExamsScreen(),
+        ),
+        GoRoute(
+          path: '/student/exams/:id/take',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return ExamTakingScreen(examId: id);
+          },
+        ),
+        GoRoute(
+          path: '/student/results',
+          builder: (context, state) => const StudentResultsScreen(),
+        ),
+        GoRoute(
+          path: '/student/payments',
+          builder: (context, state) => const StudentPaymentsScreen(),
+        ),
+        GoRoute(
+          path: '/student/attendance',
+          builder: (context, state) => const StudentAttendanceScreen(),
+        ),
+        GoRoute(
+          path: '/student/community/:groupId',
+          builder: (context, state) {
+            final groupId = state.pathParameters['groupId']!;
+            final name = state.uri.queryParameters['name'] ?? 'গ্রুপ';
+            return CommunityChatScreen(groupId: groupId, groupName: name);
+          },
+        ),
+        GoRoute(
+          path: '/student/community',
+          builder: (context, state) => const CommunityScreen(),
+        ),
+        GoRoute(
+          path: '/student/qbank',
+          builder: (context, state) => const QBankScreen(),
+        ),
+        GoRoute(
+          path: '/student/qbank/practice/:chapterId',
+          builder: (context, state) {
+            final chapterId = state.pathParameters['chapterId']!;
+            final chapter = state.uri.queryParameters['chapter'];
+            return QBankPracticeScreen(chapterId: chapterId, chapterName: chapter);
+          },
+        ),
+        GoRoute(
+          path: '/student/profile/edit',
+          builder: (context, state) => const StudentEditProfileScreen(),
+        ),
+        GoRoute(
+          path: '/student/settings',
+          builder: (context, state) => const StudentSettingsScreen(),
+        ),
+        GoRoute(
+          path: '/student/menu',
+          builder: (context, state) => const StudentMenuScreen(),
+        ),
+      ],
     ),
   ],
 );

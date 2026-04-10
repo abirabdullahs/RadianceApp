@@ -29,131 +29,148 @@ class StudentDrawer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return Drawer(
+      child: const StudentMenuContent(closeFirst: true),
+    );
+  }
+}
+
+class StudentMenuContent extends ConsumerWidget {
+  const StudentMenuContent({super.key, required this.closeFirst});
+
+  final bool closeFirst;
+
+  void _closeIfNeeded(BuildContext context) {
+    if (closeFirst && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final userAsync = ref.watch(currentUserProvider);
 
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          userAsync.when(
-            data: (user) => _StudentDrawerHeader(user: user, scheme: scheme),
-            loading: () => _DrawerHeaderLoading(scheme: scheme),
-            error: (_, _) => _StudentDrawerHeader(user: null, scheme: scheme),
-          ),
-          ListTile(
-            leading: const Icon(Icons.dashboard_outlined),
-            title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.school_outlined),
-            title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/courses');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.quiz_outlined),
-            title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/exams');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.emoji_events_outlined),
-            title: Text('ফলাফল', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/results');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.payments_outlined),
-            title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/payments');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.event_available_outlined),
-            title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/attendance');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.groups_outlined),
-            title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/community');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.help_outline),
-            title: Text('সন্দেহ সমাধান', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/doubts');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.library_books_outlined),
-            title: Text('প্রশ্ন ব্যাংক', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/qbank');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.person_outline),
-            title: Text('প্রোফাইল সম্পাদনা', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/profile/edit');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined),
-            title: Text('সেটিংস', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              context.go('/student/settings');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.palette_outlined),
-            title: Text('থিম ও রঙ', style: GoogleFonts.hindSiliguri()),
-            onTap: () {
-              Navigator.pop(context);
-              showThemePickerSheet(context, ref);
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
-            title: Text(
-              'লগআউট',
-              style: GoogleFonts.hindSiliguri(
-                color: Theme.of(context).colorScheme.error,
-                fontWeight: FontWeight.w600,
-              ),
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        userAsync.when(
+          data: (user) => _StudentDrawerHeader(user: user, scheme: scheme),
+          loading: () => _DrawerHeaderLoading(scheme: scheme),
+          error: (_, _) => _StudentDrawerHeader(user: null, scheme: scheme),
+        ),
+        ListTile(
+          leading: const Icon(Icons.dashboard_outlined),
+          title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.school_outlined),
+          title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/courses');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.quiz_outlined),
+          title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/exams');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.emoji_events_outlined),
+          title: Text('ফলাফল', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/results');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.payments_outlined),
+          title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/payments');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.event_available_outlined),
+          title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/attendance');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.groups_outlined),
+          title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/community');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.help_outline),
+          title: Text('সন্দেহ সমাধান', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/doubts');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.library_books_outlined),
+          title: Text('প্রশ্ন ব্যাংক', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/qbank');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.person_outline),
+          title: Text('প্রোফাইল সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/profile/edit');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: Text('সেটিংস', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            context.go('/student/settings');
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.palette_outlined),
+          title: Text('থিম ও রঙ', style: GoogleFonts.hindSiliguri()),
+          onTap: () {
+            _closeIfNeeded(context);
+            showThemePickerSheet(context, ref);
+          },
+        ),
+        const Divider(),
+        ListTile(
+          leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+          title: Text(
+            'লগআউট',
+            style: GoogleFonts.hindSiliguri(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w600,
             ),
-            onTap: () async {
-              Navigator.pop(context);
-              await ref.read(signInProvider.notifier).signOut();
-            },
           ),
-        ],
-      ),
+          onTap: () async {
+            _closeIfNeeded(context);
+            await ref.read(signInProvider.notifier).signOut();
+          },
+        ),
+      ],
     );
   }
 }

@@ -9,6 +9,7 @@ import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../providers/dashboard_provider.dart';
 import '../repositories/dashboard_repository.dart';
+import '../../../doubts/repositories/doubt_repository.dart';
 
 /// Admin home: summary cards, charts, quick actions.
 class AdminDashboardScreen extends ConsumerWidget {
@@ -132,6 +133,26 @@ class _DashboardBody extends ConsumerWidget {
                 onTap: () => context.push('/admin/exams'),
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          FutureBuilder<Map<String, int>>(
+            future: DoubtRepository().getInboxCounts(),
+            builder: (context, snap) {
+              final c = snap.data ?? const <String, int>{};
+              final open = c['open'] ?? 0;
+              final active = c['inProgress'] ?? 0;
+              final meeting = c['meetingScheduled'] ?? 0;
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.help_outline),
+                  title: Text('Doubt Stats', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    'Open: $open  |  Active: $active  |  Meeting: $meeting',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 24),
           Text(
