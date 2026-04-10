@@ -279,7 +279,7 @@ class AttendanceRepository {
         .order('student_id', ascending: true);
     return (rows as List<dynamic>).map((raw) {
       final m = Map<String, dynamic>.from(raw as Map);
-      final u = Map<String, dynamic>.from(m['users'] as Map);
+      final u = _relatedUserMap(m['users']);
       return AttendanceEditableRecord(
         recordId: m['id'] as String? ?? '',
         studentId: m['student_id'] as String? ?? '',
@@ -371,7 +371,7 @@ class AttendanceRepository {
       final m = Map<String, dynamic>.from(raw as Map);
       final studentId = m['student_id'] as String? ?? '';
       if (studentId.isEmpty) continue;
-      final user = Map<String, dynamic>.from(m['users'] as Map);
+      final user = _relatedUserMap(m['users']);
       final status = m['status'] as String? ?? 'absent';
       final agg = map.putIfAbsent(
         studentId,
@@ -495,7 +495,7 @@ class AttendanceRepository {
       final m = Map<String, dynamic>.from(raw as Map);
       final uid = m['student_id'] as String? ?? '';
       if (uid.isEmpty) continue;
-      final u = Map<String, dynamic>.from(m['users'] as Map);
+      final u = _relatedUserMap(m['users']);
       final a = agg.putIfAbsent(
         uid,
         () => _Agg(studentId: uid, studentNameBn: u['full_name_bn'] as String? ?? '—', studentCode: u['student_id'] as String?),
@@ -578,6 +578,15 @@ class AttendanceRepository {
     return '${u.year.toString().padLeft(4, '0')}-'
         '${u.month.toString().padLeft(2, '0')}-'
         '${u.day.toString().padLeft(2, '0')}';
+  }
+
+  static Map<String, dynamic> _relatedUserMap(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is List && raw.isNotEmpty) {
+      final first = raw.first;
+      if (first is Map) return Map<String, dynamic>.from(first);
+    }
+    return const <String, dynamic>{};
   }
 }
 

@@ -90,6 +90,14 @@ class AdminDrawer extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.psychology_outlined),
+            title: Text('প্রশ্নব্যাংক', style: GoogleFonts.hindSiliguri()),
+            onTap: () {
+              Navigator.pop(context);
+              context.go('/admin/qbank');
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.web),
             title: Text('হোম পেজ কন্টেন্ট', style: GoogleFonts.hindSiliguri()),
             onTap: () {

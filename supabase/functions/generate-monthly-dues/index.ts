@@ -16,11 +16,11 @@ serve(async (req: Request) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const CRON_SECRET = Deno.env.get("DUES_CRON_SECRET");
+    const CRON_SECRET = Deno.env.get("DUES_CRON_SECRET")?.trim();
 
     const authHeader = req.headers.get("Authorization");
-    const cronSecret = req.headers.get("x-cron-secret");
-    const hasValidCronSecret = !!CRON_SECRET && cronSecret === CRON_SECRET;
+    const cronSecret = req.headers.get("x-cron-secret")?.trim();
+    const hasValidCronSecret = !!CRON_SECRET && !!cronSecret && cronSecret === CRON_SECRET;
 
     const service = createClient(SUPABASE_URL, SERVICE_KEY);
 

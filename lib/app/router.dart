@@ -31,6 +31,10 @@ import '../features/auth/screens/splash_screen.dart';
 import '../features/home/screens/public_home_screen.dart';
 import '../features/admin/cms/admin_home_cms_screen.dart';
 import '../features/admin/community/screens/admin_course_chats_screen.dart';
+import '../features/question_bank/admin/screens/admin_qbank_chapter_questions_screen.dart';
+import '../features/question_bank/admin/screens/admin_qbank_hub_screen.dart';
+import '../features/question_bank/admin/screens/admin_qbank_question_editor_screen.dart';
+import '../features/question_bank/admin/screens/admin_qbank_json_import_screen.dart';
 import '../features/student/attendance/student_attendance_screen.dart';
 import '../features/student/community/screens/community_chat_screen.dart';
 import '../features/student/community/screens/community_groups_screen.dart';
@@ -176,22 +180,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AdminPaymentSmsTemplatesScreen(),
     ),
     GoRoute(
-      path: '/admin/attendance/:courseId/:date',
-      builder: (context, state) {
-        final courseId = state.pathParameters['courseId']!;
-        final dateStr = state.pathParameters['date']!;
-        final parsed = DateTime.tryParse(dateStr);
-        final date = parsed != null
-            ? DateTime.utc(parsed.year, parsed.month, parsed.day)
-            : DateTime.utc(
-                DateTime.now().year,
-                DateTime.now().month,
-                DateTime.now().day,
-              );
-        return AttendanceTakingScreen(courseId: courseId, date: date);
-      },
-    ),
-    GoRoute(
       path: '/admin/attendance/edit/:sessionId',
       builder: (context, state) {
         final sessionId = state.pathParameters['sessionId']!;
@@ -211,6 +199,22 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AttendanceSettingsScreen(),
     ),
     GoRoute(
+      path: '/admin/attendance/:courseId/:date',
+      builder: (context, state) {
+        final courseId = state.pathParameters['courseId']!;
+        final dateStr = state.pathParameters['date']!;
+        final parsed = DateTime.tryParse(dateStr);
+        final date = parsed != null
+            ? DateTime.utc(parsed.year, parsed.month, parsed.day)
+            : DateTime.utc(
+                DateTime.now().year,
+                DateTime.now().month,
+                DateTime.now().day,
+              );
+        return AttendanceTakingScreen(courseId: courseId, date: date);
+      },
+    ),
+    GoRoute(
       path: '/admin/attendance',
       builder: (context, state) => const AttendanceScreen(),
     ),
@@ -228,6 +232,68 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/admin/exams',
       builder: (context, state) => const AdminExamsScreen(),
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        final chapterBn = state.uri.queryParameters['chapterBn'];
+        final subjectBn = state.uri.queryParameters['subjectBn'];
+        return AdminQbankChapterQuestionsScreen(
+          chapterId: chapterId,
+          chapterBn: chapterBn,
+          subjectBn: subjectBn,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId/add-mcq',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        return AdminQbankQuestionEditorScreen(type: 'mcq', chapterId: chapterId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId/add-cq',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        return AdminQbankQuestionEditorScreen(type: 'cq', chapterId: chapterId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId/edit-mcq/:questionId',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        final questionId = state.pathParameters['questionId']!;
+        return AdminQbankQuestionEditorScreen(
+          type: 'mcq',
+          chapterId: chapterId,
+          questionId: questionId,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId/edit-cq/:questionId',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        final questionId = state.pathParameters['questionId']!;
+        return AdminQbankQuestionEditorScreen(
+          type: 'cq',
+          chapterId: chapterId,
+          questionId: questionId,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank/chapter/:chapterId/import-json',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        return AdminQbankJsonImportScreen(chapterId: chapterId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/qbank',
+      builder: (context, state) => const AdminQBankHubScreen(),
     ),
     GoRoute(
       path: '/admin/cms',
@@ -351,6 +417,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/student/qbank',
       builder: (context, state) => const QBankScreen(),
+    ),
+    GoRoute(
+      path: '/student/qbank/practice/:chapterId',
+      builder: (context, state) {
+        final chapterId = state.pathParameters['chapterId']!;
+        final chapter = state.uri.queryParameters['chapter'];
+        return QBankPracticeScreen(chapterId: chapterId, chapterName: chapter);
+      },
     ),
     GoRoute(
       path: '/student/profile/edit',
