@@ -9,6 +9,9 @@ import '../features/admin/courses/screens/admin_course_detail_screen.dart';
 import '../features/admin/courses/screens/admin_courses_screen.dart';
 import '../features/admin/notices/screens/admin_course_notice_screen.dart';
 import '../features/admin/attendance/screens/attendance_hub_screen.dart';
+import '../features/admin/attendance/screens/attendance_edit_screen.dart';
+import '../features/admin/attendance/screens/attendance_reports_screen.dart';
+import '../features/admin/attendance/screens/attendance_settings_screen.dart';
 import '../features/admin/attendance/screens/attendance_taking_screen.dart';
 import '../features/admin/dashboard/screens/admin_dashboard_screen.dart';
 import '../features/admin/payments/screens/add_payment_screen.dart';
@@ -187,6 +190,25 @@ final GoRouter appRouter = GoRouter(
               );
         return AttendanceTakingScreen(courseId: courseId, date: date);
       },
+    ),
+    GoRoute(
+      path: '/admin/attendance/edit/:sessionId',
+      builder: (context, state) {
+        final sessionId = state.pathParameters['sessionId']!;
+        return AttendanceEditScreen(sessionId: sessionId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/attendance/reports/:courseId',
+      builder: (context, state) {
+        final courseId = state.pathParameters['courseId']!;
+        final sessionId = state.uri.queryParameters['sessionId'];
+        return AttendanceReportsScreen(courseId: courseId, sessionId: sessionId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/attendance/settings',
+      builder: (context, state) => const AttendanceSettingsScreen(),
     ),
     GoRoute(
       path: '/admin/attendance',

@@ -7,7 +7,7 @@ alwaysApply: true
 
 **Keep this rule updated** after meaningful architecture, route, or dependency changes. Bump **Last updated** below.
 
-**Last updated:** 2026-04-10 (attendance phase-1 schema upgrade migration added; payment management sections 1-14 complete with final hardening; uniform right-top drawer action; exams/results phase-2+; student_id RCC+last9)
+**Last updated:** 2026-04-10 (attendance phase-1 schema + sections 2-7 implemented: admin home/start, roll-call skip flow, searchable grid, past-session edit+log, reports, and attendance settings (threshold/sort/delay/default/auto-SMS); payment management sections 1-14 complete with final hardening; uniform right-top drawer action; exams/results phase-2+; student_id RCC+last9)
 
 ---
 

@@ -1,8 +1,103 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/supabase_client.dart';
+import '../../../../shared/models/attendance_settings_model.dart';
 import '../../../../shared/models/enrollment_model.dart';
 import '../../../../shared/models/user_model.dart';
+
+class AttendanceCourseSessionSummary {
+  const AttendanceCourseSessionSummary({
+    required this.courseId,
+    required this.sessionId,
+    required this.isCompleted,
+    required this.totalStudents,
+    required this.presentCount,
+    required this.absentCount,
+  });
+
+  final String courseId;
+  final String sessionId;
+  final bool isCompleted;
+  final int totalStudents;
+  final int presentCount;
+  final int absentCount;
+}
+
+class AttendanceSessionListItem {
+  const AttendanceSessionListItem({
+    required this.sessionId,
+    required this.sessionDate,
+    required this.isCompleted,
+    required this.totalStudents,
+    required this.presentCount,
+    required this.absentCount,
+  });
+
+  final String sessionId;
+  final DateTime sessionDate;
+  final bool isCompleted;
+  final int totalStudents;
+  final int presentCount;
+  final int absentCount;
+}
+
+class AttendanceEditableRecord {
+  const AttendanceEditableRecord({
+    required this.recordId,
+    required this.studentId,
+    required this.studentNameBn,
+    required this.studentCode,
+    required this.status,
+  });
+
+  final String recordId;
+  final String studentId;
+  final String studentNameBn;
+  final String? studentCode;
+  final String status;
+}
+
+class AttendanceDailyReport {
+  const AttendanceDailyReport({
+    required this.sessionId,
+    required this.courseId,
+    required this.date,
+    required this.totalStudents,
+    required this.presentCount,
+    required this.absentCount,
+    required this.presentStudents,
+    required this.absentStudents,
+  });
+
+  final String sessionId;
+  final String courseId;
+  final DateTime date;
+  final int totalStudents;
+  final int presentCount;
+  final int absentCount;
+  final List<AttendanceEditableRecord> presentStudents;
+  final List<AttendanceEditableRecord> absentStudents;
+}
+
+class AttendanceMonthlyStudentSummary {
+  const AttendanceMonthlyStudentSummary({
+    required this.studentId,
+    required this.studentNameBn,
+    required this.studentCode,
+    required this.totalClasses,
+    required this.present,
+    required this.absent,
+    required this.percentage,
+  });
+
+  final String studentId;
+  final String studentNameBn;
+  final String? studentCode;
+  final int totalClasses;
+  final int present;
+  final int absent;
+  final double percentage;
+}
 
 /// Attendance sessions and per-student records (Supabase).
 class AttendanceRepository {
@@ -63,6 +158,280 @@ class AttendanceRepository {
         .toList();
   }
 
+  /// Returns session id for [courseId] and [date] if exists.
+  Future<String?> getSessionIdForCourseAndDate({
+    required String courseId,
+    required DateTime date,
+  }) async {
+    final dateStr = _sqlDate(date);
+    final row = await _client
+        .from(kTableAttendanceSessions)
+        .select('id')
+        .eq('course_id', courseId)
+        .eq('date', dateStr)
+        .maybeSingle();
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row)['id'] as String?;
+  }
+
+  /// For today's home cards: keyed by `course_id`.
+  Future<Map<String, AttendanceCourseSessionSummary>> getCourseSessionsForDate({
+    required List<String> courseIds,
+    required DateTime date,
+  }) async {
+    if (courseIds.isEmpty) return <String, AttendanceCourseSessionSummary>{};
+    final dateStr = _sqlDate(date);
+    final rows = await _client
+        .from(kTableAttendanceSessions)
+        .select(
+          'id, course_id, is_completed, total_students, present_count, absent_count',
+        )
+        .inFilter('course_id', courseIds)
+        .eq('date', dateStr);
+
+    final out = <String, AttendanceCourseSessionSummary>{};
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final courseId = m['course_id'] as String?;
+      if (courseId == null) continue;
+      out[courseId] = AttendanceCourseSessionSummary(
+        courseId: courseId,
+        sessionId: (m['id'] as String?) ?? '',
+        isCompleted: m['is_completed'] as bool? ?? false,
+        totalStudents: (m['total_students'] as num?)?.toInt() ?? 0,
+        presentCount: (m['present_count'] as num?)?.toInt() ?? 0,
+        absentCount: (m['absent_count'] as num?)?.toInt() ?? 0,
+      );
+    }
+    return out;
+  }
+
+  Future<List<AttendanceSessionListItem>> getRecentSessionsForCourse(
+    String courseId, {
+    int limit = 12,
+  }) async {
+    final rows = await _client
+        .from(kTableAttendanceSessions)
+        .select('id, date, is_completed, total_students, present_count, absent_count')
+        .eq('course_id', courseId)
+        .order('date', ascending: false)
+        .limit(limit);
+    return (rows as List<dynamic>).map((raw) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      return AttendanceSessionListItem(
+        sessionId: m['id'] as String? ?? '',
+        sessionDate: DateTime.tryParse(m['date'] as String? ?? '') ?? DateTime.now(),
+        isCompleted: m['is_completed'] as bool? ?? false,
+        totalStudents: (m['total_students'] as num?)?.toInt() ?? 0,
+        presentCount: (m['present_count'] as num?)?.toInt() ?? 0,
+        absentCount: (m['absent_count'] as num?)?.toInt() ?? 0,
+      );
+    }).toList();
+  }
+
+  Future<Map<String, dynamic>?> getSessionById(String sessionId) async {
+    final row = await _client
+        .from(kTableAttendanceSessions)
+        .select('id, course_id, date, is_completed, total_students, present_count, absent_count')
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<List<AttendanceEditableRecord>> getEditableRecords(String sessionId) async {
+    final rows = await _client
+        .from(kTableAttendanceRecords)
+        .select('id, student_id, status, users!inner(full_name_bn, student_id)')
+        .eq('session_id', sessionId)
+        .order('student_id', ascending: true);
+    return (rows as List<dynamic>).map((raw) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final u = Map<String, dynamic>.from(m['users'] as Map);
+      return AttendanceEditableRecord(
+        recordId: m['id'] as String? ?? '',
+        studentId: m['student_id'] as String? ?? '',
+        studentNameBn: u['full_name_bn'] as String? ?? '—',
+        studentCode: u['student_id'] as String?,
+        status: m['status'] as String? ?? 'absent',
+      );
+    }).toList();
+  }
+
+  Future<void> updateAttendanceRecordsWithLog({
+    required String sessionId,
+    required Map<String, String> nextStatusByRecordId,
+    required String changedBy,
+    String? reason,
+  }) async {
+    final rows = await _client
+        .from(kTableAttendanceRecords)
+        .select('id, status')
+        .eq('session_id', sessionId);
+
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final recordId = m['id'] as String? ?? '';
+      final oldStatus = m['status'] as String? ?? 'absent';
+      final nextStatus = nextStatusByRecordId[recordId];
+      if (nextStatus == null || nextStatus == oldStatus) continue;
+
+      await _client
+          .from(kTableAttendanceRecords)
+          .update({'status': nextStatus})
+          .eq('id', recordId);
+
+      await _client.from(kTableAttendanceEditLog).insert({
+        'record_id': recordId,
+        'old_status': oldStatus,
+        'new_status': nextStatus,
+        'changed_by': changedBy,
+        'reason': reason,
+      });
+    }
+  }
+
+  Future<AttendanceDailyReport> getDailyReportBySession(String sessionId) async {
+    final session = await getSessionById(sessionId);
+    if (session == null) {
+      throw Exception('সেশন পাওয়া যায়নি');
+    }
+    final records = await getEditableRecords(sessionId);
+    final presentStudents = records.where((r) => r.status == 'present' || r.status == 'late').toList();
+    final absentStudents = records.where((r) => r.status == 'absent').toList();
+    final date = DateTime.tryParse(session['date'] as String? ?? '') ?? DateTime.now();
+    return AttendanceDailyReport(
+      sessionId: sessionId,
+      courseId: session['course_id'] as String? ?? '',
+      date: date,
+      totalStudents: records.length,
+      presentCount: presentStudents.length,
+      absentCount: absentStudents.length,
+      presentStudents: presentStudents,
+      absentStudents: absentStudents,
+    );
+  }
+
+  Future<List<AttendanceMonthlyStudentSummary>> getCourseMonthlySummary({
+    required String courseId,
+    required DateTime month,
+  }) async {
+    final start = DateTime.utc(month.year, month.month, 1);
+    final end = DateTime.utc(month.year, month.month + 1, 1).subtract(const Duration(days: 1));
+    final sessions = await _client
+        .from(kTableAttendanceSessions)
+        .select('id')
+        .eq('course_id', courseId)
+        .gte('date', _sqlDate(start))
+        .lte('date', _sqlDate(end));
+    final sessionIds = (sessions as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['id'] as String)
+        .toList();
+    if (sessionIds.isEmpty) return const <AttendanceMonthlyStudentSummary>[];
+
+    final records = await _client
+        .from(kTableAttendanceRecords)
+        .select('student_id, status, users!inner(full_name_bn, student_id)')
+        .inFilter('session_id', sessionIds);
+
+    final map = <String, _Agg>{};
+    for (final raw in records as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final studentId = m['student_id'] as String? ?? '';
+      if (studentId.isEmpty) continue;
+      final user = Map<String, dynamic>.from(m['users'] as Map);
+      final status = m['status'] as String? ?? 'absent';
+      final agg = map.putIfAbsent(
+        studentId,
+        () => _Agg(
+          studentId: studentId,
+          studentNameBn: user['full_name_bn'] as String? ?? '—',
+          studentCode: user['student_id'] as String?,
+        ),
+      );
+      agg.total++;
+      if (status == 'present' || status == 'late') {
+        agg.present++;
+      } else {
+        agg.absent++;
+      }
+    }
+
+    final out = map.values
+        .map((a) => AttendanceMonthlyStudentSummary(
+              studentId: a.studentId,
+              studentNameBn: a.studentNameBn,
+              studentCode: a.studentCode,
+              totalClasses: a.total,
+              present: a.present,
+              absent: a.absent,
+              percentage: a.total == 0 ? 0 : (a.present * 100.0) / a.total,
+            ))
+        .toList()
+      ..sort((a, b) => a.percentage.compareTo(b.percentage));
+    return out;
+  }
+
+  Future<List<Map<String, dynamic>>> getAttendanceTrend30Days(String courseId) async {
+    final end = DateTime.now();
+    final start = end.subtract(const Duration(days: 29));
+    final sessions = await _client
+        .from(kTableAttendanceSessions)
+        .select('id, date')
+        .eq('course_id', courseId)
+        .gte('date', _sqlDate(start))
+        .lte('date', _sqlDate(end))
+        .order('date', ascending: true);
+    final sRows = sessions as List<dynamic>;
+    if (sRows.isEmpty) return const <Map<String, dynamic>>[];
+    final out = <Map<String, dynamic>>[];
+    for (final raw in sRows) {
+      final s = Map<String, dynamic>.from(raw as Map);
+      final sid = s['id'] as String? ?? '';
+      if (sid.isEmpty) continue;
+      final records = await _client
+          .from(kTableAttendanceRecords)
+          .select('status')
+          .eq('session_id', sid);
+      final list = records as List<dynamic>;
+      final total = list.length;
+      final present = list.where((e) {
+        final st = Map<String, dynamic>.from(e as Map)['status'] as String?;
+        return st == 'present' || st == 'late';
+      }).length;
+      final pct = total == 0 ? 0.0 : (present * 100.0) / total;
+      out.add({
+        'date': s['date'],
+        'percentage': pct,
+      });
+    }
+    return out;
+  }
+
+  Future<AttendanceSettingsModel> getAttendanceSettings() async {
+    final row = await _client
+        .from(kTableAttendanceSettings)
+        .select()
+        .eq('singleton_key', 1)
+        .maybeSingle();
+    if (row == null) return const AttendanceSettingsModel();
+    return AttendanceSettingsModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<AttendanceSettingsModel> saveAttendanceSettings(
+    AttendanceSettingsModel settings,
+  ) async {
+    final row = await _client
+        .from(kTableAttendanceSettings)
+        .upsert(
+          settings.toUpsertJson(updatedBy: _client.auth.currentUser?.id),
+          onConflict: 'singleton_key',
+        )
+        .select()
+        .single();
+    return AttendanceSettingsModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
   /// Existing marks for this session (`student_id` → `present` / `absent` / `late`).
   Future<Map<String, String>> getRecordStatusesForSession(String sessionId) async {
     final rows = await _client
@@ -100,4 +469,19 @@ class AttendanceRepository {
         '${u.month.toString().padLeft(2, '0')}-'
         '${u.day.toString().padLeft(2, '0')}';
   }
+}
+
+class _Agg {
+  _Agg({
+    required this.studentId,
+    required this.studentNameBn,
+    required this.studentCode,
+  });
+
+  final String studentId;
+  final String studentNameBn;
+  final String? studentCode;
+  int total = 0;
+  int present = 0;
+  int absent = 0;
 }

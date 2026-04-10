@@ -50,6 +50,7 @@ const String kTablePaymentDues = 'payment_dues';
 const String kTableAttendanceSessions = 'attendance_sessions';
 const String kTableAttendanceRecords = 'attendance_records';
 const String kTableAttendanceEditLog = 'attendance_edit_log';
+const String kTableAttendanceSettings = 'attendance_settings';
 const String kTableExams = 'exams';
 const String kTableQuestions = 'questions';
 const String kTableExamSubmissions = 'exam_submissions';
