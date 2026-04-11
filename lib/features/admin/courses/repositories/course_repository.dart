@@ -22,7 +22,7 @@ class CourseRepository {
   Future<List<CourseModel>> getCourses() async {
     final rows = await _client
         .from(kTableCourses)
-        .select()
+        .select(_courseSelectColumns)
         .order('created_at', ascending: false);
     final list = rows as List<dynamic>;
     return list
@@ -30,10 +30,28 @@ class CourseRepository {
         .toList();
   }
 
+  static const _courseSelectColumns =
+      'id,name,description,thumbnail_url,monthly_fee,is_active,created_by,created_at,updated_at';
+
+  /// Loads many courses by id in one request (preserves arbitrary order).
+  Future<List<CourseModel>> getCoursesByIds(List<String> ids) async {
+    if (ids.isEmpty) return [];
+    final rows = await _client
+        .from(kTableCourses)
+        .select(_courseSelectColumns)
+        .inFilter('id', ids);
+    final byId = <String, CourseModel>{};
+    for (final e in rows as List<dynamic>) {
+      final m = CourseModel.fromJson(Map<String, dynamic>.from(e as Map));
+      byId[m.id] = m;
+    }
+    return ids.map((id) => byId[id]).whereType<CourseModel>().toList();
+  }
+
   Future<CourseModel> getCourseById(String id) async {
     final row = await _client
         .from(kTableCourses)
-        .select()
+        .select(_courseSelectColumns)
         .eq('id', id)
         .maybeSingle();
     if (row == null) {

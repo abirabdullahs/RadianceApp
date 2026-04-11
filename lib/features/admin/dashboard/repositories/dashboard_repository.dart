@@ -3,12 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../doubts/repositories/doubt_repository.dart';
-import '../../../admin/exams/repositories/exam_repository.dart';
 import '../../../admin/attendance/repositories/attendance_repository.dart';
 import '../../courses/repositories/course_repository.dart';
 import '../../payments/repositories/payment_repository.dart';
 import '../../../../shared/models/course_model.dart';
-import '../../../../shared/models/exam_model.dart';
 
 /// One row for "আজকের উপস্থিতি" per course.
 class TodayCourseAttendanceRow {
@@ -156,20 +154,17 @@ class DashboardRepository {
     SupabaseClient? client,
     PaymentRepository? paymentRepository,
     CourseRepository? courseRepository,
-    ExamRepository? examRepository,
     DoubtRepository? doubtRepository,
     AttendanceRepository? attendanceRepository,
   })  : _client = client ?? supabaseClient,
         _paymentRepository = paymentRepository ?? PaymentRepository(),
         _courseRepository = courseRepository ?? CourseRepository(),
-        _examRepository = examRepository ?? ExamRepository(),
         _doubtRepository = doubtRepository ?? DoubtRepository(),
         _attendanceRepository = attendanceRepository ?? AttendanceRepository();
 
   final SupabaseClient _client;
   final PaymentRepository _paymentRepository;
   final CourseRepository _courseRepository;
-  final ExamRepository _examRepository;
   final DoubtRepository _doubtRepository;
   final AttendanceRepository _attendanceRepository;
 
@@ -179,11 +174,10 @@ class DashboardRepository {
 
     final monthlyRevenue = await _paymentRepository.getMonthlyRevenue(courseId: courseFilter);
 
-    final studentsRaw = await _client
+    final totalStudents = await _client
         .from(kTableUsers)
-        .select('id')
+        .count(CountOption.exact)
         .eq('role', 'student');
-    final totalStudents = (studentsRaw as List<dynamic>).length;
 
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
@@ -191,29 +185,15 @@ class DashboardRepository {
     final lastMonthStart = DateTime(now.year, now.month - 1, 1);
     final lastMonthEnd = monthStart;
 
-    final monthPay = await _client
-        .from(kTablePaymentLedger)
-        .select('amount_paid')
-        .gte('paid_at', monthStart.toUtc().toIso8601String())
-        .lt('paid_at', monthEnd.toUtc().toIso8601String());
-    var monthRevenue = 0.0;
-    for (final e in monthPay as List<dynamic>) {
-      final m = Map<String, dynamic>.from(e as Map);
-      final a = m['amount_paid'];
-      monthRevenue += a is num ? a.toDouble() : double.tryParse('$a') ?? 0;
-    }
+    final monthRevenue = await _sumLedgerAmountPaid(
+      monthStart.toUtc(),
+      monthEnd.toUtc(),
+    );
 
-    final lastPay = await _client
-        .from(kTablePaymentLedger)
-        .select('amount_paid')
-        .gte('paid_at', lastMonthStart.toUtc().toIso8601String())
-        .lt('paid_at', lastMonthEnd.toUtc().toIso8601String());
-    var lastMonthRevenue = 0.0;
-    for (final e in lastPay as List<dynamic>) {
-      final m = Map<String, dynamic>.from(e as Map);
-      final a = m['amount_paid'];
-      lastMonthRevenue += a is num ? a.toDouble() : double.tryParse('$a') ?? 0;
-    }
+    final lastMonthRevenue = await _sumLedgerAmountPaid(
+      lastMonthStart.toUtc(),
+      lastMonthEnd.toUtc(),
+    );
 
     double? revenueMoMPercent;
     if (lastMonthRevenue > 0) {
@@ -225,20 +205,18 @@ class DashboardRepository {
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
-    final todayPayRows = await _client
+    final todayPaymentsCount = await _client
         .from(kTablePaymentLedger)
-        .select('id')
+        .count(CountOption.exact)
         .gte('paid_at', startOfDay.toUtc().toIso8601String())
         .lt('paid_at', endOfDay.toUtc().toIso8601String());
-    final todayPaymentsCount = (todayPayRows as List<dynamic>).length;
 
     final todayPct = await _computeTodayAttendancePct(todayStr, courseId: courseFilter);
 
-    final examRows = await _client
+    final upcomingExamsCount = await _client
         .from(kTableExams)
-        .select('id')
+        .count(CountOption.exact)
         .or('status.eq.scheduled,status.eq.live');
-    final upcomingExamsCount = (examRows as List<dynamic>).length;
 
     final attendanceTrend = await _attendanceTrendLastDays(30, courseId: courseFilter);
 
@@ -255,20 +233,18 @@ class DashboardRepository {
 
     final totalDue = await _paymentRepository.sumOpenScheduleRemaining();
 
-    final doubtRows = await _client.from(kTableDoubts).select('status');
-    var openDoubtsCount = 0;
-    for (final raw in doubtRows as List<dynamic>) {
-      if ((raw as Map)['status'] == 'open') openDoubtsCount++;
-    }
+    final openDoubtsCount = await _client
+        .from(kTableDoubts)
+        .count(CountOption.exact)
+        .eq('status', 'open');
 
     final weekAgo =
         DateTime.now().subtract(const Duration(days: 7)).toUtc().toIso8601String();
-    final newStud = await _client
+    final newStudentsThisWeek = await _client
         .from(kTableUsers)
-        .select('id')
+        .count(CountOption.exact)
         .eq('role', 'student')
         .gte('created_at', weekAgo);
-    final newStudentsThisWeek = (newStud as List<dynamic>).length;
 
     final todayCourseAttendance = await _buildTodayCourseRows(
       courseList: courses,
@@ -375,25 +351,40 @@ class DashboardRepository {
   }
 
   Future<List<UpcomingExamSummary>> _loadUpcomingExams() async {
-    final exams = await _examRepository.listExams();
-    final courseList = await _courseRepository.getCourses();
-    final courseNames = {for (final c in courseList) c.id: c.name};
-    final filtered = exams.where((ExamModel e) {
-      return e.status == 'scheduled' || e.status == 'live';
-    }).toList();
-    filtered.sort((a, b) {
-      final da = a.startTime ?? a.examDate ?? DateTime(2100);
-      final db = b.startTime ?? b.examDate ?? DateTime(2100);
+    final rows = await _client
+        .from(kTableExams)
+        .select(
+          'id,title,course_id,exam_mode,start_time,exam_date,status,courses(name)',
+        )
+        .or('status.eq.scheduled,status.eq.live');
+    final list = (rows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    list.sort((a, b) {
+      final da = _parseDashboardDt(a['start_time']) ??
+          _parseDashboardDt(a['exam_date']) ??
+          DateTime(2100);
+      final db = _parseDashboardDt(b['start_time']) ??
+          _parseDashboardDt(b['exam_date']) ??
+          DateTime(2100);
       return da.compareTo(db);
     });
-    return filtered.take(8).map((e) {
+    return list.take(8).map((m) {
+      final rel = m['courses'];
+      var courseName = '';
+      if (rel is Map) {
+        courseName = Map<String, dynamic>.from(rel)['name']?.toString() ?? '';
+      }
+      if (courseName.isEmpty) {
+        courseName = m['course_id']?.toString() ?? '';
+      }
       return UpcomingExamSummary(
-        id: e.id,
-        title: e.title,
-        courseName: courseNames[e.courseId] ?? e.courseId,
-        examMode: e.examMode,
-        startTime: e.startTime,
-        examDate: e.examDate,
+        id: m['id'] as String? ?? '',
+        title: m['title']?.toString() ?? '',
+        courseName: courseName,
+        examMode: (m['exam_mode'] as String?) ?? 'online',
+        startTime: _parseDashboardDt(m['start_time']),
+        examDate: _parseDashboardDt(m['exam_date']),
       );
     }).toList();
   }
@@ -589,6 +580,38 @@ class DashboardRepository {
     return '${u.year.toString().padLeft(4, '0')}-'
         '${u.month.toString().padLeft(2, '0')}-'
         '${u.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<double> _sumLedgerAmountPaid(
+    DateTime rangeStartUtc,
+    DateTime rangeEndExclusiveUtc,
+  ) async {
+    final rows = await _client
+        .from(kTablePaymentLedger)
+        .select('amount_paid.sum()')
+        .gte('paid_at', rangeStartUtc.toIso8601String())
+        .lt('paid_at', rangeEndExclusiveUtc.toIso8601String());
+    return _firstNumericAggregate(rows);
+  }
+
+  static double _firstNumericAggregate(dynamic rows) {
+    final list = rows as List<dynamic>;
+    if (list.isEmpty) return 0;
+    final row = Map<String, dynamic>.from(list.first as Map);
+    for (final v in row.values) {
+      if (v == null) continue;
+      if (v is num) return v.toDouble();
+      final p = double.tryParse('$v');
+      if (p != null) return p;
+    }
+    return 0;
+  }
+
+  static DateTime? _parseDashboardDt(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   static double _parseAmount(dynamic value) {

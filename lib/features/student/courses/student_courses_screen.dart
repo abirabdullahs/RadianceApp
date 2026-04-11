@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
+import '../../../core/supabase_storage_image_url.dart';
 import '../../../shared/models/course_model.dart';
 import '../../../shared/models/enrollment_model.dart';
 import '../../admin/courses/repositories/course_repository.dart';
@@ -77,7 +78,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
-                            imageUrl: c.thumbnailUrl!,
+                            imageUrl: supabaseStorageRenderImageUrl(c.thumbnailUrl!, width: 128, height: 128),
                             width: 56,
                             height: 56,
                             fit: BoxFit.cover,

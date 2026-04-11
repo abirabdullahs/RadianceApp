@@ -331,6 +331,25 @@ class PaymentRepository {
         .toList();
   }
 
+  static const _ledgerRowSelect =
+      'id,voucher_no,student_id,course_id,payment_type_id,payment_type_code,for_month,amount_due,amount_paid,discount_amount,fine_amount,payment_method,transaction_ref,status,note,description,paid_at,created_by,created_at';
+
+  /// Recent ledger rows for activity widgets (avoids loading full history).
+  Future<List<PaymentLedgerModel>> getRecentPaymentLedger({
+    required String studentId,
+    int limit = 3,
+  }) async {
+    final rows = await _client
+        .from(kTablePaymentLedger)
+        .select(_ledgerRowSelect)
+        .eq('student_id', studentId)
+        .order('paid_at', ascending: false)
+        .limit(limit);
+    return (rows as List<dynamic>)
+        .map((e) => PaymentLedgerModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<List<PaymentLedgerModel>> getPaymentLedger({
     String? studentId,
     String? courseId,

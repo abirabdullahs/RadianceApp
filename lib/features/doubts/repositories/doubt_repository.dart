@@ -17,6 +17,15 @@ class DoubtRepository {
   final SupabaseClient _client;
   static const _uuid = Uuid();
 
+  static const _doubtRowSelect =
+      'id,student_id,course_id,subject,chapter,title,description,image_url,resolution_type,meeting_link,meeting_time,meeting_note,solved_by,status,solved_at,created_at,updated_at';
+
+  static const _doubtMessageRowSelect =
+      'id,doubt_id,sender_id,message_type,content,body,file_url,image_url,created_at';
+
+  static const _userRowSelectForDoubt =
+      'id,phone,email,full_name_bn,full_name_en,avatar_url,role,student_id,date_of_birth,guardian_phone,address,college,class_level,fcm_token,is_active,created_at,updated_at';
+
   Future<int> countSolvedForStudent(String studentId) async {
     final row = await _client
         .from(kTableStudentDoubtStats)
@@ -32,7 +41,7 @@ class DoubtRepository {
     if (uid == null) return [];
     final rows = await _client
         .from(kTableDoubts)
-        .select()
+        .select(_doubtRowSelect)
         .eq('student_id', uid)
         .order('created_at', ascending: false);
     return (rows as List<dynamic>)
@@ -42,8 +51,10 @@ class DoubtRepository {
 
   /// Admin + teacher: all threads, newest first.
   Future<List<DoubtThreadModel>> listAllForStaff() async {
-    final rows =
-        await _client.from(kTableDoubts).select().order('created_at', ascending: false);
+    final rows = await _client
+        .from(kTableDoubts)
+        .select(_doubtRowSelect)
+        .order('created_at', ascending: false);
     return (rows as List<dynamic>)
         .map((e) => DoubtThreadModel.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -53,7 +64,7 @@ class DoubtRepository {
     String? status,
     String? courseId,
   }) async {
-    var q = _client.from(kTableDoubts).select();
+    var q = _client.from(kTableDoubts).select(_doubtRowSelect);
     if (status != null && status.isNotEmpty && status != 'all') {
       q = q.eq('status', status);
     }
@@ -69,7 +80,8 @@ class DoubtRepository {
   Future<Map<String, UserModel>> loadUsersByIds(Iterable<String> ids) async {
     final list = ids.toSet().toList();
     if (list.isEmpty) return {};
-    final rows = await _client.from(kTableUsers).select().inFilter('id', list);
+    final rows =
+        await _client.from(kTableUsers).select(_userRowSelectForDoubt).inFilter('id', list);
     final out = <String, UserModel>{};
     for (final raw in rows as List<dynamic>) {
       final u = UserModel.fromJson(Map<String, dynamic>.from(raw as Map));
@@ -79,7 +91,8 @@ class DoubtRepository {
   }
 
   Future<DoubtThreadModel?> getThread(String id) async {
-    final row = await _client.from(kTableDoubts).select().eq('id', id).maybeSingle();
+    final row =
+        await _client.from(kTableDoubts).select(_doubtRowSelect).eq('id', id).maybeSingle();
     if (row == null) return null;
     return DoubtThreadModel.fromJson(Map<String, dynamic>.from(row));
   }
@@ -144,7 +157,7 @@ class DoubtRepository {
   Future<List<Map<String, dynamic>>> listMessages(String doubtId) async {
     final rows = await _client
         .from(kTableDoubtMessages)
-        .select()
+        .select(_doubtMessageRowSelect)
         .eq('doubt_id', doubtId)
         .order('created_at', ascending: true);
     return (rows as List<dynamic>)

@@ -15,7 +15,9 @@ class NotificationsRepository {
     if (uid == null) return [];
     final rows = await _client
         .from(kTableNotifications)
-        .select()
+        .select(
+          'id,user_id,title,body,type,action_route,is_read,fcm_sent,created_at',
+        )
         .eq('user_id', uid)
         .order('created_at', ascending: false)
         .limit(limit);

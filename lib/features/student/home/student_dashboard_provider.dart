@@ -2,9 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/course_model.dart';
-import '../../../shared/models/enrollment_model.dart' show EnrollmentStatus;
+import '../../../shared/models/enrollment_model.dart';
 import '../../../shared/models/exam_model.dart';
 import '../../../shared/models/doubt_thread_model.dart';
+import '../../../shared/models/payment_ledger_model.dart';
 import '../../../shared/models/payment_schedule_model.dart';
 import '../../../shared/models/user_model.dart';
 import '../../admin/courses/repositories/course_repository.dart';
@@ -116,8 +117,8 @@ class StudentDashboardData {
   final String? lastLectureChapterId;
 }
 
-final studentDashboardProvider =
-    FutureProvider.autoDispose<StudentDashboardData>((ref) async {
+/// Non–autoDispose so returning to Home reuses cached data until explicit refresh.
+final studentDashboardProvider = FutureProvider<StudentDashboardData>((ref) async {
   final uid = supabaseClient.auth.currentUser!.id;
   final month = DateTime.now();
   final ym = '${month.year}-${month.month.toString().padLeft(2, '0')}';
@@ -130,13 +131,34 @@ final studentDashboardProvider =
   final notesRepo = NotesRepository();
   final courseRepo = CourseRepository();
 
-  final student = await studentRepo.getStudentById(uid);
-  final att = await studentRepo.getStudentAttendanceSummary(uid, ym);
+  Future<int> solvedSafely() async {
+    try {
+      return await doubtRepo.countSolvedForStudent(uid);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  final parallel = await Future.wait<Object?>([
+    studentRepo.getStudentById(uid),
+    studentRepo.getStudentAttendanceSummary(uid, ym),
+    paymentRepo.getPaymentSchedule(studentId: uid, onlyOpen: true),
+    doubtRepo.listMyDoubts(),
+    examRepo.listExamsForCurrentStudent(),
+    studentRepo.getMyEnrollments(),
+    resultRepo.getMyPerformanceRecent(studentId: uid, limit: 3),
+    paymentRepo.getRecentPaymentLedger(studentId: uid, limit: 3),
+    notesRepo.getLatestLectureForCurrentStudent(),
+    solvedSafely(),
+  ]);
+
+  final student = parallel[0]! as UserModel;
+  final att = parallel[1]! as Map<String, dynamic>;
   final attendancePct = att['percentage'] as double?;
   final attendancePresent = (att['present'] as num?)?.toInt() ?? 0;
   final attendanceTotal = (att['total_sessions'] as num?)?.toInt() ?? 0;
 
-  final dues = await paymentRepo.getPaymentSchedule(studentId: uid, onlyOpen: true);
+  final dues = parallel[2]! as List<PaymentScheduleModel>;
   final openDues =
       dues.where((d) => d.status != PaymentScheduleStatus.paid).toList();
   final openDueTotal = openDues.fold<double>(
@@ -148,34 +170,17 @@ final studentDashboardProvider =
       '${month.year}-${month.month.toString().padLeft(2, '0')}';
   final paymentOk = openDues.isEmpty;
 
-  final results = await resultRepo.getStudentResults(studentId: uid);
-  LatestResultSummary? latestResult;
-  if (results.isNotEmpty) {
-    final r = results.first;
-    final exam = Map<String, dynamic>.from(r['exams'] as Map? ?? const {});
-    latestResult = LatestResultSummary(
-      examTitle: exam['title']?.toString() ?? 'পরীক্ষা',
-      score: (r['score'] as num?)?.toDouble() ?? 0,
-      totalMarks: (r['total_marks'] as num?)?.toDouble() ?? 0,
-      percentage: (r['percentage'] as num?)?.toDouble() ?? 0,
-      rank: (r['rank'] as num?)?.toInt(),
-      grade: r['grade']?.toString(),
-    );
-  }
-
-  final myDoubts = await doubtRepo.listMyDoubts();
+  final myDoubts = parallel[3]! as List<DoubtThreadModel>;
   var openDoubts = 0;
   var inProgressDoubts = 0;
   for (final d in myDoubts) {
     if (d.status == DoubtStatus.open) openDoubts++;
     if (d.status == DoubtStatus.inProgress) inProgressDoubts++;
   }
-  var solvedDoubts = 0;
-  try {
-    solvedDoubts = await doubtRepo.countSolvedForStudent(uid);
-  } catch (_) {}
 
-  final allExams = await examRepo.listExamsForCurrentStudent();
+  final solvedDoubts = parallel[9]! as int;
+
+  final allExams = parallel[4]! as List<ExamModel>;
   final now = DateTime.now();
   final upcoming = allExams.where((e) {
     if (e.status != 'scheduled' && e.status != 'live') return false;
@@ -189,18 +194,52 @@ final studentDashboardProvider =
     return da.compareTo(db);
   });
 
-  final enrollments = await studentRepo.getMyEnrollments();
-  final enrolledCourses = <EnrolledCourseCardData>[];
-  for (final e in enrollments) {
-    if (e.status != EnrollmentStatus.active) continue;
-    try {
-      final c = await courseRepo.getCourseById(e.courseId);
-      final pct = await notesRepo.getNotesProgressPercentForCourse(c.id);
-      enrolledCourses.add(EnrolledCourseCardData(course: c, notesProgressPct: pct));
-    } catch (_) {}
+  final enrollments = parallel[5]! as List<EnrollmentModel>;
+  final recentResultRows =
+      (parallel[6]! as List<dynamic>).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  final recentPayments = parallel[7]! as List<PaymentLedgerModel>;
+  final lastLecture = parallel[8] as Map<String, dynamic>?;
+
+  LatestResultSummary? latestResult;
+  if (recentResultRows.isNotEmpty) {
+    final r = recentResultRows.first;
+    final exam = Map<String, dynamic>.from(r['exams'] as Map? ?? const {});
+    latestResult = LatestResultSummary(
+      examTitle: exam['title']?.toString() ?? 'পরীক্ষা',
+      score: (r['score'] as num?)?.toDouble() ?? 0,
+      totalMarks: (r['total_marks'] as num?)?.toDouble() ?? 0,
+      percentage: (r['percentage'] as num?)?.toDouble() ?? 0,
+      rank: (r['rank'] as num?)?.toInt(),
+      grade: r['grade']?.toString(),
+    );
   }
 
-  final lastLecture = await notesRepo.getLatestLectureForCurrentStudent();
+  final activeCourseIds = enrollments
+      .where((e) => e.status == EnrollmentStatus.active)
+      .map((e) => e.courseId)
+      .toList();
+  final enrolledCourses = <EnrolledCourseCardData>[];
+  if (activeCourseIds.isNotEmpty) {
+    final batchCourses = await Future.wait([
+      courseRepo.getCoursesByIds(activeCourseIds),
+      notesRepo.getNotesProgressPercentForCourses(activeCourseIds),
+    ]);
+    final courses = batchCourses[0] as List<CourseModel>;
+    final progressMap = batchCourses[1] as Map<String, double>;
+    final courseById = {for (final c in courses) c.id: c};
+    for (final cid in activeCourseIds) {
+      final c = courseById[cid];
+      if (c == null) continue;
+      try {
+        enrolledCourses.add(
+          EnrolledCourseCardData(
+            course: c,
+            notesProgressPct: progressMap[cid] ?? 0,
+          ),
+        );
+      } catch (_) {}
+    }
+  }
 
   final alerts = <StudentDashboardAlert>[];
   if (openDues.isNotEmpty) {
@@ -250,8 +289,7 @@ final studentDashboardProvider =
   final dailySuggestion = tips[DateTime.now().day % tips.length];
 
   final recentActivity = <StudentActivityItem>[];
-  final payments = await paymentRepo.getPaymentLedger(studentId: uid);
-  for (final p in payments.take(3)) {
+  for (final p in recentPayments) {
     recentActivity.add(
       StudentActivityItem(
         icon: '💳',
@@ -273,8 +311,8 @@ final studentDashboardProvider =
       ),
     );
   }
-  if (results.isNotEmpty) {
-    final r = results.first;
+  if (recentResultRows.isNotEmpty) {
+    final r = recentResultRows.first;
     final exam = Map<String, dynamic>.from(r['exams'] as Map? ?? const {});
     recentActivity.add(
       StudentActivityItem(

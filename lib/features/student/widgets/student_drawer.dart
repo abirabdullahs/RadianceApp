@@ -8,6 +8,7 @@ import '../../../app/i18n/app_localizations.dart';
 import '../../../app/widgets/app_bar_drawer_leading.dart';
 import '../../../app/widgets/theme_picker_sheet.dart';
 import '../../auth/providers/auth_provider.dart' show currentUserProvider, signInProvider;
+import '../../../core/supabase_storage_image_url.dart';
 import '../../../shared/models/user_model.dart';
 
 export '../../../app/widgets/app_bar_drawer_leading.dart'
@@ -209,9 +210,10 @@ class _StudentDrawerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final name = user?.fullNameBn.trim().isNotEmpty == true
         ? user!.fullNameBn.trim()
-        : AppLocalizations.of(context).t('student');
+        : l10n.t('student');
     final idLabel = user?.studentId?.trim().isNotEmpty == true
         ? user!.studentId!.trim()
         : (user?.phone ?? '—');
@@ -225,7 +227,7 @@ class _StudentDrawerHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Radiance',
+            l10n.t('app_name'),
             style: GoogleFonts.hindSiliguri(
               color: Colors.white,
               fontSize: 20,
@@ -233,7 +235,7 @@ class _StudentDrawerHeader extends StatelessWidget {
             ),
           ),
           Text(
-            AppLocalizations.of(context).t('student'),
+            l10n.t('student'),
             style: GoogleFonts.hindSiliguri(
               color: Colors.white70,
               fontSize: 13,
@@ -262,7 +264,7 @@ class _StudentDrawerHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${AppLocalizations.of(context).t('id_prefix')}: $idLabel',
+                      '${l10n.t('id_prefix')}: $idLabel',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.nunito(
@@ -303,7 +305,7 @@ class _Avatar extends StatelessWidget {
       child: hasUrl
           ? ClipOval(
               child: CachedNetworkImage(
-                imageUrl: url!,
+                imageUrl: supabaseStorageRenderImageUrl(url!, width: 128, height: 128),
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,

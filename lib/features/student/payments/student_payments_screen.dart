@@ -126,7 +126,10 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri())),
+      );
     }
   }
 
@@ -215,9 +218,15 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
                         ),
                         const SizedBox(height: 8),
                         if (b.settings.acceptBkash && (b.settings.bkashNumber?.isNotEmpty ?? false))
-                          Text('📱 bKash: ${b.settings.bkashNumber}', style: GoogleFonts.nunito()),
+                          Text(
+                            l10n.t('pay_mobile_bkash').replaceAll('{n}', b.settings.bkashNumber!),
+                            style: GoogleFonts.nunito(),
+                          ),
                         if (b.settings.acceptNagad && (b.settings.nagadNumber?.isNotEmpty ?? false))
-                          Text('📱 Nagad: ${b.settings.nagadNumber}', style: GoogleFonts.nunito()),
+                          Text(
+                            l10n.t('pay_mobile_nagad').replaceAll('{n}', b.settings.nagadNumber!),
+                            style: GoogleFonts.nunito(),
+                          ),
                         if (b.settings.acceptCash)
                           Text(l10n.t('pay_cash_at_center'), style: GoogleFonts.hindSiliguri()),
                       ],

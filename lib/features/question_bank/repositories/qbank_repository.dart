@@ -11,10 +11,26 @@ class QBankRepository {
 
   final SupabaseClient _client;
 
+  static const _sessionCols =
+      'id,name,name_bn,display_order,is_active,created_at';
+  static const _subjectCols =
+      'id,session_id,name,name_bn,display_order,is_active,created_at';
+  static const _chapterCols =
+      'id,subject_id,name,name_bn,display_order,is_active,created_at';
+  static const _chapterStatsCols = 'chapter_id,subject_id,mcq_count,cq_count';
+  static const _mcqCols =
+      'id,chapter_id,question_text,image_url,option_a,option_b,option_c,option_d,correct_option,explanation,explanation_image_url,difficulty,source,board_year,board_name,tags,is_published,created_by,created_at,updated_at';
+  static const _cqCols =
+      'id,chapter_id,stem_text,stem_image_url,ga_text,ga_image_url,ga_answer,ga_marks,gha_text,gha_image_url,gha_answer,gha_marks,difficulty,source,board_year,board_name,tags,is_published,created_by,created_at,updated_at';
+  static const _bookmarkCols =
+      'id,student_id,question_type,question_id,note,created_at';
+  static const _practiceSessionCols =
+      'id,chapter_id,question_type,total_questions,correct_answers,started_at,completed_at';
+
   Future<List<QbankSession>> getSessions() async {
     final rows = await _client
         .from(kTableQbankSessions)
-        .select()
+        .select(_sessionCols)
         .order('display_order', ascending: true);
     return (rows as List<dynamic>)
         .map((e) => QbankSession.fromJson(Map<String, dynamic>.from(e as Map)))
@@ -24,7 +40,7 @@ class QBankRepository {
   Future<List<QbankSubject>> getSubjects(String sessionId) async {
     final rows = await _client
         .from(kTableQbankSubjects)
-        .select()
+        .select(_subjectCols)
         .eq('session_id', sessionId)
         .order('display_order', ascending: true);
     return (rows as List<dynamic>)
@@ -48,7 +64,7 @@ class QBankRepository {
           'display_order': displayOrder,
           'is_active': isActive,
         })
-        .select()
+        .select(_subjectCols)
         .single();
     return QbankSubject.fromJson(Map<String, dynamic>.from(row));
   }
@@ -56,7 +72,7 @@ class QBankRepository {
   Future<List<QbankChapter>> getChapters(String subjectId) async {
     final rows = await _client
         .from(kTableQbankChapters)
-        .select()
+        .select(_chapterCols)
         .eq('subject_id', subjectId)
         .order('display_order', ascending: true);
     return (rows as List<dynamic>)
@@ -80,7 +96,7 @@ class QBankRepository {
           'display_order': displayOrder,
           'is_active': isActive,
         })
-        .select()
+        .select(_chapterCols)
         .single();
     return QbankChapter.fromJson(Map<String, dynamic>.from(row));
   }
@@ -88,7 +104,7 @@ class QBankRepository {
   Future<List<QbankChapterStats>> getChapterStatsForSubject(String subjectId) async {
     final rows = await _client
         .from('qbank_chapter_stats')
-        .select()
+        .select(_chapterStatsCols)
         .eq('subject_id', subjectId);
     return (rows as List<dynamic>)
         .map((e) =>
@@ -104,7 +120,7 @@ class QBankRepository {
     int? limit,
     int? offset,
   }) async {
-    dynamic query = _client.from(kTableQbankMcq).select().eq('chapter_id', chapterId);
+    dynamic query = _client.from(kTableQbankMcq).select(_mcqCols).eq('chapter_id', chapterId);
     if (difficulty != null && difficulty.isNotEmpty) {
       query = query.eq('difficulty', difficulty);
     }
@@ -134,7 +150,7 @@ class QBankRepository {
     int? limit,
     int? offset,
   }) async {
-    dynamic query = _client.from(kTableQbankCq).select().eq('chapter_id', chapterId);
+    dynamic query = _client.from(kTableQbankCq).select(_cqCols).eq('chapter_id', chapterId);
     if (difficulty != null && difficulty.isNotEmpty) {
       query = query.eq('difficulty', difficulty);
     }
@@ -211,7 +227,7 @@ class QBankRepository {
   Future<List<QbankBookmarkItem>> getBookmarks(String studentId) async {
     final rows = await _client
         .from(kTableQbankBookmarksV2)
-        .select()
+        .select(_bookmarkCols)
         .eq('student_id', studentId)
         .order('created_at', ascending: false);
     return (rows as List<dynamic>)
@@ -323,7 +339,7 @@ class QBankRepository {
   }) async {
     dynamic q = _client
         .from(kTableQbankPracticeSessions)
-        .select()
+        .select(_practiceSessionCols)
         .eq('student_id', studentId)
         .order('started_at', ascending: false)
         .limit(limit);
@@ -338,14 +354,20 @@ class QBankRepository {
 
   // Admin CRUD
   Future<QbankMcq> addMcq(QbankMcq mcq) async {
-    final row =
-        await _client.from(kTableQbankMcq).insert(mcq.toInsertJson()).select().single();
+    final row = await _client
+        .from(kTableQbankMcq)
+        .insert(mcq.toInsertJson())
+        .select(_mcqCols)
+        .single();
     return QbankMcq.fromJson(Map<String, dynamic>.from(row));
   }
 
   Future<QbankCq> addCq(QbankCq cq) async {
-    final row =
-        await _client.from(kTableQbankCq).insert(cq.toInsertJson()).select().single();
+    final row = await _client
+        .from(kTableQbankCq)
+        .insert(cq.toInsertJson())
+        .select(_cqCols)
+        .single();
     return QbankCq.fromJson(Map<String, dynamic>.from(row));
   }
 
@@ -366,12 +388,12 @@ class QBankRepository {
   }
 
   Future<QbankMcq> getMcqById(String id) async {
-    final row = await _client.from(kTableQbankMcq).select().eq('id', id).single();
+    final row = await _client.from(kTableQbankMcq).select(_mcqCols).eq('id', id).single();
     return QbankMcq.fromJson(Map<String, dynamic>.from(row));
   }
 
   Future<QbankCq> getCqById(String id) async {
-    final row = await _client.from(kTableQbankCq).select().eq('id', id).single();
+    final row = await _client.from(kTableQbankCq).select(_cqCols).eq('id', id).single();
     return QbankCq.fromJson(Map<String, dynamic>.from(row));
   }
 

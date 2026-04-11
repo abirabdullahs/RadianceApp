@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../../shared/models/user_model.dart';
@@ -106,12 +107,13 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
     final first = DateTime(1990);
     final last = DateTime(now.year - 8, now.month, now.day);
 
+    final l10n = AppLocalizations.of(context);
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
       firstDate: first,
       lastDate: last,
-      helpText: 'জন্ম তারিখ',
+      helpText: l10n.t('profile_dob'),
     );
     if (picked != null) {
       setState(() {
@@ -124,11 +126,11 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
     }
   }
 
-  String? _validateGuardian(String? v) {
+  String? _validateGuardian(AppLocalizations l10n, String? v) {
     final s = v?.trim() ?? '';
     if (s.isEmpty) return null;
     if (s.length != 11 || !s.startsWith('01')) {
-      return '১১ সংখ্যা, ০১ দিয়ে শুরু';
+      return l10n.t('profile_guardian_phone_rule');
     }
     return null;
   }
@@ -165,7 +167,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'প্রোফাইল সংরক্ষিত হয়েছে',
+            AppLocalizations.of(context).t('profile_saved'),
             style: GoogleFonts.hindSiliguri(color: Colors.white),
           ),
         ),
@@ -176,7 +178,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ব্যর্থ: $e',
+            '${AppLocalizations.of(context).t('failed')}: $e',
             style: GoogleFonts.hindSiliguri(color: Colors.white),
           ),
         ),
@@ -207,6 +209,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
 
     if (_loadingUser) {
@@ -216,7 +219,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
           leading: const AppBarDrawerLeading(),
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
-          title: Text('প্রোফাইল', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('profile'), style: GoogleFonts.hindSiliguri()),
           actions: const [AppBarDrawerAction()],
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -230,10 +233,10 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
           leading: const AppBarDrawerLeading(),
           automaticallyImplyLeading: false,
           leadingWidth: leadingWidthForDrawer(context),
-          title: Text('প্রোফাইল', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('profile'), style: GoogleFonts.hindSiliguri()),
           actions: const [AppBarDrawerAction()],
         ),
-        body: const Center(child: Text('লগইন প্রয়োজন')),
+        body: Center(child: Text(l10n.t('qbank_login_required'), style: GoogleFonts.hindSiliguri())),
       );
     }
 
@@ -246,7 +249,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text(
-          'প্রোফাইল সম্পাদনা',
+          l10n.t('edit_profile'),
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
         actions: const [AppBarDrawerAction()],
@@ -258,14 +261,14 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               children: [
-                _sectionTitle('ছবি'),
+                _sectionTitle(l10n.t('profile_section_photo')),
                 const SizedBox(height: 12),
                 Center(child: _photoPicker(scheme, user)),
                     const SizedBox(height: 24),
-                    _sectionTitle('মৌলিক তথ্য'),
+                    _sectionTitle(l10n.t('profile_section_basic')),
                     const SizedBox(height: 12),
                     Text(
-                      'মোবাইল (পরিবর্তনযোগ্য নয়)',
+                      l10n.t('profile_phone_locked'),
                       style: GoogleFonts.hindSiliguri(
                         fontSize: 12,
                         color: scheme.onSurfaceVariant,
@@ -282,7 +285,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                     if (user.studentId != null && user.studentId!.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Text(
-                        'শিক্ষার্থী আইডি',
+                        l10n.t('profile_student_id_label'),
                         style: GoogleFonts.hindSiliguri(
                           fontSize: 12,
                           color: scheme.onSurfaceVariant,
@@ -298,11 +301,11 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                     TextFormField(
                       controller: _nameBn,
                       enabled: !_submitting,
-                      decoration: _decoration('পূর্ণ নাম (বাংলা) *'),
+                      decoration: _decoration(l10n.t('profile_full_name_bn')),
                       style: GoogleFonts.hindSiliguri(),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
-                          return 'নাম দিন';
+                          return l10n.t('profile_name_required');
                         }
                         return null;
                       },
@@ -312,7 +315,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                       controller: _nameEn,
                       enabled: !_submitting,
                       textCapitalization: TextCapitalization.words,
-                      decoration: _decoration('পূর্ণ নাম (ইংরেজি)'),
+                      decoration: _decoration(l10n.t('profile_full_name_en')),
                       style: GoogleFonts.nunito(),
                     ),
                     const SizedBox(height: 12),
@@ -324,9 +327,9 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                         FilteringTextInputFormatter.digitsOnly,
                         LengthLimitingTextInputFormatter(11),
                       ],
-                      decoration: _decoration('অভিভাবকের মোবাইল'),
+                      decoration: _decoration(l10n.t('profile_guardian_phone')),
                       style: GoogleFonts.nunito(),
-                      validator: _validateGuardian,
+                      validator: (v) => _validateGuardian(l10n, v),
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -334,7 +337,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                       enabled: !_submitting,
                       readOnly: true,
                       onTap: _submitting ? null : _pickDob,
-                      decoration: _decoration('জন্ম তারিখ').copyWith(
+                      decoration: _decoration(l10n.t('profile_dob')).copyWith(
                         suffixIcon: const Icon(Icons.calendar_today_outlined),
                       ),
                       style: GoogleFonts.nunito(),
@@ -343,15 +346,15 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                     DropdownButtonFormField<ClassLevel>(
                       // ignore: deprecated_member_use — selection via setState
                       value: _classLevel,
-                      decoration: _decoration('শ্রেণি'),
-                      items: const [
-                        DropdownMenuItem(value: ClassLevel.ssc, child: Text('SSC')),
-                        DropdownMenuItem(value: ClassLevel.hsc, child: Text('HSC')),
+                      decoration: _decoration(l10n.t('profile_class')),
+                      items: [
+                        DropdownMenuItem(value: ClassLevel.ssc, child: Text(l10n.t('class_level_ssc'), style: GoogleFonts.hindSiliguri())),
+                        DropdownMenuItem(value: ClassLevel.hsc, child: Text(l10n.t('class_level_hsc'), style: GoogleFonts.hindSiliguri())),
                         DropdownMenuItem(
                           value: ClassLevel.admission,
-                          child: Text('Admission'),
+                          child: Text(l10n.t('class_level_admission'), style: GoogleFonts.hindSiliguri()),
                         ),
-                        DropdownMenuItem(value: ClassLevel.other, child: Text('Other')),
+                        DropdownMenuItem(value: ClassLevel.other, child: Text(l10n.t('class_level_other'), style: GoogleFonts.hindSiliguri())),
                       ],
                       onChanged: _submitting
                           ? null
@@ -362,17 +365,17 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                       controller: _college,
                       enabled: !_submitting,
                       textCapitalization: TextCapitalization.words,
-                      decoration: _decoration('কলেজ / স্কুল'),
+                      decoration: _decoration(l10n.t('profile_college')),
                       style: GoogleFonts.hindSiliguri(),
                     ),
                     const SizedBox(height: 24),
-                    _sectionTitle('ঠিকানা'),
+                    _sectionTitle(l10n.t('profile_section_address')),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _address,
                       enabled: !_submitting,
                       maxLines: 3,
-                      decoration: _decoration('ঠিকানা'),
+                      decoration: _decoration(l10n.t('profile_address')),
                       style: GoogleFonts.hindSiliguri(),
                     ),
                     const SizedBox(height: 28),
@@ -389,7 +392,7 @@ class _StudentEditProfileScreenState extends ConsumerState<StudentEditProfileScr
                           ),
                         ),
                         child: Text(
-                          'সংরক্ষণ করুন',
+                          l10n.t('profile_save'),
                           style: GoogleFonts.hindSiliguri(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,

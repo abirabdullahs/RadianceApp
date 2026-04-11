@@ -14,6 +14,12 @@ class StudentExamRepository {
   final SupabaseClient _client;
   static const _uuid = Uuid();
 
+  static const _examRowSelect =
+      'id,course_id,subject_id,chapter_ids,exam_mode,title,description,instructions,duration_minutes,start_time,end_time,exam_date,venue,total_marks,pass_marks,marks_per_question,shuffle_questions,show_result_immediately,negative_marking,status,created_by,created_at,updated_at';
+
+  static const _questionRowSelect =
+      'id,exam_id,question_text,image_url,option_a,option_b,option_c,option_d,correct_option,marks,explanation,display_order';
+
   Future<List<ExamModel>> listExamsForCurrentStudent() async {
     final uid = _client.auth.currentUser?.id;
     if (uid == null) return [];
@@ -31,7 +37,7 @@ class StudentExamRepository {
 
     final rows = await _client
         .from(kTableExams)
-        .select()
+        .select(_examRowSelect)
         .inFilter('course_id', courseIds)
         .order('start_time', ascending: false);
     return (rows as List<dynamic>)
@@ -40,14 +46,15 @@ class StudentExamRepository {
   }
 
   Future<ExamModel> getExam(String id) async {
-    final row = await _client.from(kTableExams).select().eq('id', id).single();
+    final row =
+        await _client.from(kTableExams).select(_examRowSelect).eq('id', id).single();
     return ExamModel.fromJson(Map<String, dynamic>.from(row));
   }
 
   Future<List<QuestionModel>> listQuestions(String examId) async {
     final rows = await _client
         .from(kTableQuestions)
-        .select()
+        .select(_questionRowSelect)
         .eq('exam_id', examId)
         .order('display_order', ascending: true);
     return (rows as List<dynamic>)

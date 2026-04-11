@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../widgets/student_drawer.dart';
 import 'note_markdown_style.dart';
 import 'repositories/notes_repository.dart';
@@ -43,20 +44,21 @@ class _NotesScreenState extends State<NotesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('ক্লাসনোট', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('class_notes'), style: GoogleFonts.hindSiliguri()),
         actions: [
           IconButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const DownloadedNotesScreen()),
             ),
             icon: const Icon(Icons.download_done_outlined),
-            tooltip: 'ডাউনলোড',
+            tooltip: l10n.t('notes_download_tooltip'),
           ),
           const AppBarDrawerAction(),
         ],
@@ -68,11 +70,11 @@ class _NotesScreenState extends State<NotesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('লোড ব্যর্থ: ${snap.error}', style: GoogleFonts.hindSiliguri()));
+            return Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri()));
           }
           final rows = snap.data ?? [];
           if (rows.isEmpty) {
-            return Center(child: Text('কোনো নোট নেই', style: GoogleFonts.hindSiliguri()));
+            return Center(child: Text(l10n.t('notes_empty'), style: GoogleFonts.hindSiliguri()));
           }
           return RefreshIndicator(
             onRefresh: _reload,
@@ -91,13 +93,19 @@ class _NotesScreenState extends State<NotesScreen> {
                     leading: _typeIcon((n['type'] as String?) ?? 'text'),
                     title: Text(n['title'] as String? ?? '', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
                     subtitle: Text(
-                      _statusText(isViewed: isViewed, isNew: isNew, watched: watched, duration: duration),
+                      _statusText(
+                        l10n,
+                        isViewed: isViewed,
+                        isNew: isNew,
+                        watched: watched,
+                        duration: duration,
+                      ),
                       style: GoogleFonts.hindSiliguri(fontSize: 12),
                     ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () async {
                       await _repo.markViewed(n['id'] as String);
-                      if (!mounted) return;
+                      if (!context.mounted) return;
                       await Navigator.of(context).push(
                         MaterialPageRoute<void>(builder: (_) => _NoteViewerScreen(note: n, repo: _repo)),
                       );
@@ -120,7 +128,8 @@ class _NotesScreenState extends State<NotesScreen> {
     return DateTime.now().difference(created.toLocal()).inDays <= 7;
   }
 
-  String _statusText({
+  String _statusText(
+    AppLocalizations l10n, {
     required bool isViewed,
     required bool isNew,
     required int watched,
@@ -128,11 +137,11 @@ class _NotesScreenState extends State<NotesScreen> {
   }) {
     if (duration > 0 && watched > 0 && watched < duration) {
       final pct = (watched * 100 / duration).round();
-      return '▶ $pct% দেখা হয়েছে';
+      return l10n.t('notes_video_progress').replaceAll('{pct}', '$pct');
     }
-    if (isViewed) return '✅ দেখা হয়েছে';
-    if (isNew) return '🆕 নতুন';
-    return '⬜ দেখা হয়নি';
+    if (isViewed) return l10n.t('notes_status_viewed');
+    if (isNew) return l10n.t('notes_status_new');
+    return l10n.t('notes_status_not_viewed');
   }
 
   Widget _typeIcon(String type) {
@@ -206,22 +215,29 @@ class _PdfViewerState extends State<_PdfViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final url = (widget.note['file_url'] ?? widget.note['external_url']) as String?;
-    if (url == null || url.isEmpty) return const Center(child: Text('PDF URL পাওয়া যায়নি'));
+    if (url == null || url.isEmpty) {
+      return Center(child: Text(l10n.t('notes_pdf_missing'), style: GoogleFonts.hindSiliguri()));
+    }
+    final pageLine = l10n
+        .t('notes_page_of')
+        .replaceAll('{n}', '${_current + 1}')
+        .replaceAll('{m}', _total == 0 ? '-' : '$_total');
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(8),
           child: Row(
             children: [
-              Expanded(child: Text('Page ${_current + 1} / ${_total == 0 ? '-' : _total}', style: GoogleFonts.nunito())),
+              Expanded(child: Text(pageLine, style: GoogleFonts.nunito())),
               FilledButton.tonalIcon(
                 onPressed: () async {
                   final uri = Uri.parse(url);
                   await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('Open'),
+                label: Text(l10n.t('notes_open')),
               ),
             ],
           ),
@@ -286,7 +302,10 @@ class _YoutubeViewerState extends State<_YoutubeViewer> {
 
   @override
   Widget build(BuildContext context) {
-    if (_controller == null) return const Center(child: Text('Invalid YouTube URL'));
+    final l10n = AppLocalizations.of(context);
+    if (_controller == null) {
+      return Center(child: Text(l10n.t('notes_youtube_invalid'), style: GoogleFonts.hindSiliguri()));
+    }
     return YoutubePlayerBuilder(
       player: YoutubePlayer(controller: _controller!),
       builder: (context, player) => Padding(
@@ -295,7 +314,7 @@ class _YoutubeViewerState extends State<_YoutubeViewer> {
           children: [
             player,
             const SizedBox(height: 10),
-            Text('Playback speed, full screen, progress supported', style: GoogleFonts.nunito()),
+            Text(l10n.t('notes_playback_hint'), style: GoogleFonts.nunito()),
           ],
         ),
       ),
@@ -347,8 +366,11 @@ class _RichTextViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final text = (note['text_content'] ?? note['content']) as String?;
-    if (text == null || text.trim().isEmpty) return const Center(child: Text('কনটেন্ট নেই'));
+    if (text == null || text.trim().isEmpty) {
+      return Center(child: Text(l10n.t('notes_no_content'), style: GoogleFonts.hindSiliguri()));
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: MarkdownBody(
@@ -372,8 +394,11 @@ class _ImageViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final url = (note['file_url'] ?? note['external_url']) as String?;
-    if (url == null || url.isEmpty) return const Center(child: Text('Image URL নেই'));
+    if (url == null || url.isEmpty) {
+      return Center(child: Text(l10n.t('notes_image_missing'), style: GoogleFonts.hindSiliguri()));
+    }
     return InteractiveViewer(
       child: Center(child: Image.network(url, fit: BoxFit.contain)),
     );
@@ -386,6 +411,7 @@ class _ExternalOpenViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final url = (note['external_url'] ?? note['youtube_url'] ?? note['file_url']) as String?;
     return Center(
       child: FilledButton.icon(
@@ -395,7 +421,7 @@ class _ExternalOpenViewer extends StatelessWidget {
           if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
         },
         icon: const Icon(Icons.open_in_browser),
-        label: Text('Open Resource', style: GoogleFonts.hindSiliguri()),
+        label: Text(l10n.t('notes_open_resource'), style: GoogleFonts.hindSiliguri()),
       ),
     );
   }
@@ -430,25 +456,27 @@ class _DownloadedNotesScreenState extends State<DownloadedNotesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     var total = 0;
     for (final e in _items.values) {
       final m = Map<String, dynamic>.from(e as Map);
       total += (m['bytes'] as num?)?.toInt() ?? 0;
     }
+    final mb = (total / (1024 * 1024)).toStringAsFixed(2);
     return Scaffold(
-      appBar: AppBar(title: Text('ডাউনলোড করা নোট', style: GoogleFonts.hindSiliguri())),
+      appBar: AppBar(title: Text(l10n.t('notes_downloaded_title'), style: GoogleFonts.hindSiliguri())),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
           ListTile(
             leading: const Icon(Icons.storage_outlined),
-            title: Text('ব্যবহৃত: ${(total / (1024 * 1024)).toStringAsFixed(2)} MB', style: GoogleFonts.hindSiliguri()),
+            title: Text(l10n.t('notes_storage_used').replaceAll('{mb}', mb), style: GoogleFonts.hindSiliguri()),
             trailing: TextButton(
               onPressed: () async {
                 await _DownloadStore.clearAll();
                 await _load();
               },
-              child: const Text('সব মুছুন'),
+              child: Text(l10n.t('notes_clear_all'), style: GoogleFonts.hindSiliguri()),
             ),
           ),
           ..._items.entries.map((e) {
@@ -456,7 +484,7 @@ class _DownloadedNotesScreenState extends State<DownloadedNotesScreen> {
             final bytes = (m['bytes'] as num?)?.toInt() ?? 0;
             return Card(
               child: ListTile(
-                title: Text(m['title'] as String? ?? 'Note', style: GoogleFonts.hindSiliguri()),
+                title: Text(m['title'] as String? ?? l10n.t('notes_fallback_title'), style: GoogleFonts.hindSiliguri()),
                 subtitle: Text('${(bytes / 1024).toStringAsFixed(1)} KB', style: GoogleFonts.nunito()),
                 trailing: IconButton(
                   onPressed: () => _delete(e.key),

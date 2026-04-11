@@ -9,10 +9,13 @@ class NotesRepository {
 
   final SupabaseClient _client;
 
+  static const _noteRowSelect =
+      'id,chapter_id,title,description,type,file_url,youtube_url,external_url,text_content,content,file_size_kb,duration_seconds,thumbnail_url,is_published,display_order,view_count,created_by,created_at,updated_at';
+
   Future<List<Map<String, dynamic>>> listNotesForChapter(String chapterId) async {
     final rows = await _client
         .from(kTableNotes)
-        .select()
+        .select(_noteRowSelect)
         .eq('chapter_id', chapterId)
         .or('is_published.eq.true,is_published.is.null')
         .order('display_order', ascending: true)
@@ -34,6 +37,18 @@ class NotesRepository {
 
   /// Latest published lecture note visible to the student (RLS: enrolled chapters).
   /// Returns `null` if none or if `lecture` type is unavailable in the project.
+  /// Parallel [getNotesProgressPercentForCourse] for many courses (one round-trip batch of work).
+  Future<Map<String, double>> getNotesProgressPercentForCourses(
+    List<String> courseIds,
+  ) async {
+    final ids = courseIds.toSet().toList();
+    if (ids.isEmpty) return {};
+    final entries = await Future.wait(
+      ids.map((id) async => MapEntry(id, await getNotesProgressPercentForCourse(id))),
+    );
+    return Map<String, double>.fromEntries(entries);
+  }
+
   /// Approximate % of published notes in [courseId] marked viewed by current student.
   Future<double> getNotesProgressPercentForCourse(String courseId) async {
     final uid = _client.auth.currentUser?.id;

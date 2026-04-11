@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/supabase_storage_image_url.dart';
 import '../providers/courses_provider.dart';
 
 class CourseCard extends StatelessWidget {
@@ -34,7 +35,7 @@ class CourseCard extends StatelessWidget {
               aspectRatio: 16 / 10,
               child: c.thumbnailUrl != null && c.thumbnailUrl!.isNotEmpty
                   ? CachedNetworkImage(
-                      imageUrl: c.thumbnailUrl!,
+                      imageUrl: supabaseStorageRenderImageUrl(c.thumbnailUrl!, width: 640),
                       fit: BoxFit.cover,
                       placeholder: (context, url) => ColoredBox(
                         color: scheme.surfaceContainerHighest,

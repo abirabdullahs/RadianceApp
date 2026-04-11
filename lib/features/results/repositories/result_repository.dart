@@ -88,7 +88,7 @@ class ResultRepository {
     final rows = await _client
         .from(kTableResults)
         .select(
-          'id,exam_id,score,total_marks,percentage,rank,published_at,exam_type,'
+          'id,exam_id,score,total_marks,percentage,grade,rank,published_at,exam_type,'
           'exams(title,subject_id)',
         )
         .eq('student_id', studentId)

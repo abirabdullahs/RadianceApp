@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../app/widgets/app_bar_drawer_leading.dart';
 import '../../../app/widgets/theme_picker_sheet.dart';
 import '../../auth/providers/auth_provider.dart' show currentUserProvider, signInProvider;
+import '../../../core/supabase_storage_image_url.dart';
 import '../../../shared/models/user_model.dart';
 
 export '../../../app/widgets/app_bar_drawer_leading.dart'
@@ -284,7 +285,7 @@ class _AdminAvatar extends StatelessWidget {
       child: hasUrl
           ? ClipOval(
               child: CachedNetworkImage(
-                imageUrl: url!,
+                imageUrl: supabaseStorageRenderImageUrl(url!, width: 128, height: 128),
                 width: 64,
                 height: 64,
                 fit: BoxFit.cover,

@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/i18n/app_localizations.dart';
 import '../../../core/supabase_client.dart';
+import '../../../core/supabase_storage_image_url.dart';
 import '../../../shared/models/doubt_thread_model.dart';
 import '../../../shared/models/user_model.dart';
 import '../../admin/widgets/admin_drawer.dart';
@@ -229,8 +230,11 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
       await _refetchMessages();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+          SnackBar(
+            content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri()),
+          ),
         );
       }
     } finally {
@@ -386,7 +390,9 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+          SnackBar(
+            content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri()),
+          ),
         );
       }
     }
@@ -475,7 +481,9 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+        SnackBar(
+          content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri()),
+        ),
       );
     }
   }
@@ -507,7 +515,9 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+          SnackBar(
+            content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri()),
+          ),
         );
       }
     }
@@ -674,7 +684,11 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                                 if (type == 'text')
                                   SelectableText(body ?? '', style: GoogleFonts.hindSiliguri()),
                                 if (type == 'image' && fileUrl != null)
-                                  CachedNetworkImage(imageUrl: fileUrl, height: 160, fit: BoxFit.cover),
+                                  CachedNetworkImage(
+                                    imageUrl: supabaseStorageRenderImageUrl(fileUrl, width: 480),
+                                    height: 160,
+                                    fit: BoxFit.cover,
+                                  ),
                                 if ((type == 'voice' || type == 'file') && fileUrl != null)
                                   InkWell(
                                     onTap: () => launchUrl(Uri.parse(fileUrl)),
@@ -701,51 +715,84 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                 ),
               ),
               if (uid != null)
-            SafeArea(
-              child: Material(
-                elevation: 4,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.attach_file),
-                      onPressed: _uploading ? null : () => _attachments(uid),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: _text,
-                        minLines: 1,
-                        maxLines: 4,
-                        enabled: !_sending && !_uploading,
-                        decoration: InputDecoration(
-                          hintText: l10n.t('message_hint'),
-                          hintStyle: GoogleFonts.hindSiliguri(),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 12,
-                          ),
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: Material(
+                      elevation: 2,
+                      shadowColor: Colors.black26,
+                      borderRadius: BorderRadius.circular(28),
+                      color: scheme.surfaceContainerHigh,
+                      clipBehavior: Clip.antiAlias,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.attach_file),
+                              onPressed: _uploading ? null : () => _attachments(uid),
+                            ),
+                            Expanded(
+                              child: TextField(
+                                controller: _text,
+                                minLines: 1,
+                                maxLines: 4,
+                                enabled: !_sending && !_uploading,
+                                decoration: InputDecoration(
+                                  hintText: l10n.t('message_hint'),
+                                  hintStyle: GoogleFonts.hindSiliguri(),
+                                  filled: true,
+                                  fillColor: scheme.surfaceContainerHighest,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide(
+                                      color: scheme.outlineVariant.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide(
+                                      color: scheme.outlineVariant.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                    borderSide: BorderSide(color: scheme.primary, width: 1.5),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                ),
+                                style: GoogleFonts.hindSiliguri(),
+                              ),
+                            ),
+                            ListenableBuilder(
+                              listenable: _text,
+                              builder: (context, _) {
+                                final empty = _text.text.trim().isEmpty;
+                                return IconButton.filled(
+                                  onPressed: (_sending || _uploading || empty) ? null : _sendText,
+                                  icon: _sending
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.send_rounded),
+                                );
+                              },
+                            ),
+                          ],
                         ),
-                        style: GoogleFonts.hindSiliguri(),
-                        onChanged: (_) => setState(() {}),
                       ),
                     ),
-                    IconButton.filled(
-                      onPressed: (_sending || _uploading || _text.text.trim().isEmpty)
-                          ? null
-                          : _sendText,
-                      icon: _sending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
             ],
           ),
         ),

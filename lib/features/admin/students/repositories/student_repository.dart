@@ -18,6 +18,9 @@ class StudentRepository {
   final SupabaseClient _client;
   static const _uuid = Uuid();
 
+  static const _kUserRowSelect =
+      'id,phone,email,full_name_bn,full_name_en,avatar_url,role,student_id,date_of_birth,guardian_phone,address,college,class_level,fcm_token,is_active,created_at,updated_at';
+
   /// Lists students (`role = student`). Optional [searchQuery] matches name / phone / student_id.
   /// [courseId] limits to students enrolled in that course.
   Future<List<UserModel>> getStudents({
@@ -36,7 +39,7 @@ class StudentRepository {
       if (idFilter.isEmpty) return [];
     }
 
-    var q = _client.from(kTableUsers).select().eq('role', UserRole.student.toJson());
+    var q = _client.from(kTableUsers).select(_kUserRowSelect).eq('role', UserRole.student.toJson());
 
     if (idFilter != null) {
       q = q.inFilter('id', idFilter);
@@ -61,7 +64,7 @@ class StudentRepository {
   Future<UserModel> getStudentById(String id) async {
     final row = await _client
         .from(kTableUsers)
-        .select()
+        .select(_kUserRowSelect)
         .eq('id', id)
         .eq('role', UserRole.student.toJson())
         .maybeSingle();

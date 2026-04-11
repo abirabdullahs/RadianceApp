@@ -759,21 +759,27 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
     );
   }
 
-  Widget _buildSummary(String uid) {
+  Widget _buildSummary(BuildContext context, String uid) {
+    final l10n = AppLocalizations.of(context);
     final wrongCount = _questions.length - _correct;
     final score = _questions.isEmpty ? 0 : ((_correct * 100) / _questions.length).round();
+    final statsLine = l10n
+        .t('qbank_summary_stats')
+        .replaceAll('{tot}', '${_questions.length}')
+        .replaceAll('{c}', '$_correct')
+        .replaceAll('{w}', '$wrongCount');
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('🎉 Practice শেষ', style: GoogleFonts.hindSiliguri(fontSize: 20, fontWeight: FontWeight.w700)),
+          Text(l10n.t('qbank_practice_finished'), style: GoogleFonts.hindSiliguri(fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          Text('মোট: ${_questions.length} | সঠিক: $_correct | ভুল: $wrongCount', style: GoogleFonts.hindSiliguri()),
-          Text('স্কোর: $score%', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          Text(statsLine, style: GoogleFonts.hindSiliguri()),
+          Text(l10n.t('qbank_score_percent').replaceAll('{p}', '$score'), style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
           const SizedBox(height: 12),
           if (_wrong.isNotEmpty)
-            Text('ভুল প্রশ্ন: ${_wrong.length} টি', style: GoogleFonts.hindSiliguri()),
+            Text(l10n.t('qbank_wrong_count_line').replaceAll('{n}', '${_wrong.length}'), style: GoogleFonts.hindSiliguri()),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -791,11 +797,11 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
                     _wrong.clear();
                   });
                 },
-                child: Text('আবার Practice', style: GoogleFonts.hindSiliguri()),
+                child: Text(l10n.t('qbank_practice_again'), style: GoogleFonts.hindSiliguri()),
               ),
               FilledButton(
                 onPressed: _wrong.isEmpty ? null : () => _bookmarkWrong(uid),
-                child: Text('ভুলগুলো Bookmark', style: GoogleFonts.hindSiliguri()),
+                child: Text(l10n.t('qbank_bookmark_wrong'), style: GoogleFonts.hindSiliguri()),
               ),
             ],
           ),
@@ -907,7 +913,12 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
     if (!mounted) return;
     ref.invalidate(qbankBookmarksProvider(uid));
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_wrong.length} টি প্রশ্ন bookmark করা হয়েছে', style: GoogleFonts.hindSiliguri())),
+      SnackBar(
+        content: Text(
+          AppLocalizations.of(context).t('qbank_bookmarked_snackbar').replaceAll('{n}', '${_wrong.length}'),
+          style: GoogleFonts.hindSiliguri(),
+        ),
+      ),
     );
   }
 
@@ -942,13 +953,14 @@ class _StudentMcqListState extends ConsumerState<_StudentMcqList> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final async = ref.watch(
       qbankMcqQuestionsProvider(QbankQuestionQuery(chapterId: widget.chapterId)),
     );
     return async.when(
       data: (items) {
         if (items.isEmpty) {
-          return Center(child: Text('কোনো MCQ নেই', style: GoogleFonts.hindSiliguri()));
+          return Center(child: Text(l10n.t('qbank_no_mcq'), style: GoogleFonts.hindSiliguri()));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(12),
@@ -984,11 +996,11 @@ class _StudentMcqListState extends ConsumerState<_StudentMcqList> {
                               _revealed.add(q.id);
                             }
                           }),
-                          child: Text(show ? 'উত্তর লুকান' : 'উত্তর দেখাও', style: GoogleFonts.hindSiliguri()),
+                          child: Text(show ? l10n.t('qbank_hide_answer') : l10n.t('qbank_show_answer'), style: GoogleFonts.hindSiliguri()),
                         ),
                         const Spacer(),
                         IconButton(
-                          tooltip: 'Bookmark',
+                          tooltip: l10n.t('qbank_bookmarks_tooltip'),
                           onPressed: widget.userId == null
                               ? null
                               : () async {
@@ -1000,7 +1012,7 @@ class _StudentMcqListState extends ConsumerState<_StudentMcqList> {
                                   ref.invalidate(qbankBookmarksProvider(widget.userId!));
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(this.context).showSnackBar(
-                                  SnackBar(content: Text('Bookmark updated', style: GoogleFonts.nunito())),
+                                  SnackBar(content: Text(l10n.t('qbank_bookmark_updated'), style: GoogleFonts.hindSiliguri())),
                                 );
                                 },
                           icon: const Icon(Icons.bookmark_add_outlined),
@@ -1009,7 +1021,7 @@ class _StudentMcqListState extends ConsumerState<_StudentMcqList> {
                     ),
                     if (show) ...[
                       const Divider(),
-                      Text('সঠিক উত্তর: ${q.correctOption}', style: GoogleFonts.hindSiliguri()),
+                      Text('${l10n.t('qbank_correct_answer_label')} ${q.correctOption}', style: GoogleFonts.hindSiliguri()),
                       if ((q.explanation ?? '').trim().isNotEmpty)
                         MixedContentRenderer(content: q.explanation!),
                     ],
@@ -1021,7 +1033,7 @@ class _StudentMcqListState extends ConsumerState<_StudentMcqList> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('MCQ load failed: $e')),
+      error: (e, _) => Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
     );
   }
 }
@@ -1041,13 +1053,14 @@ class _StudentCqListState extends ConsumerState<_StudentCqList> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final async = ref.watch(
       qbankCqQuestionsProvider(QbankQuestionQuery(chapterId: widget.chapterId)),
     );
     return async.when(
       data: (items) {
         if (items.isEmpty) {
-          return Center(child: Text('কোনো CQ নেই', style: GoogleFonts.hindSiliguri()));
+          return Center(child: Text(l10n.t('qbank_no_cq'), style: GoogleFonts.hindSiliguri()));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(12),
@@ -1063,13 +1076,13 @@ class _StudentCqListState extends ConsumerState<_StudentCqList> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('উদ্দীপক', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                    Text(l10n.t('qbank_cq_stem'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
                     MixedContentRenderer(content: q.stemText),
                     const SizedBox(height: 8),
                     Text('গ (${q.gaMarks}) ${q.gaText}', style: GoogleFonts.hindSiliguri()),
                     TextButton(
                       onPressed: () => setState(() => showGa ? _ga.remove(q.id) : _ga.add(q.id)),
-                      child: Text(showGa ? 'গ উত্তর লুকান' : 'গ উত্তর দেখাও', style: GoogleFonts.hindSiliguri()),
+                      child: Text(showGa ? l10n.t('qbank_cq_hide_ga') : l10n.t('qbank_cq_show_ga'), style: GoogleFonts.hindSiliguri()),
                     ),
                     if (showGa && (q.gaAnswer ?? '').trim().isNotEmpty)
                       MixedContentRenderer(content: q.gaAnswer!),
@@ -1077,14 +1090,14 @@ class _StudentCqListState extends ConsumerState<_StudentCqList> {
                     Text('ঘ (${q.ghaMarks}) ${q.ghaText}', style: GoogleFonts.hindSiliguri()),
                     TextButton(
                       onPressed: () => setState(() => showGha ? _gha.remove(q.id) : _gha.add(q.id)),
-                      child: Text(showGha ? 'ঘ উত্তর লুকান' : 'ঘ উত্তর দেখাও', style: GoogleFonts.hindSiliguri()),
+                      child: Text(showGha ? l10n.t('qbank_cq_hide_gha') : l10n.t('qbank_cq_show_gha'), style: GoogleFonts.hindSiliguri()),
                     ),
                     if (showGha && (q.ghaAnswer ?? '').trim().isNotEmpty)
                       MixedContentRenderer(content: q.ghaAnswer!),
                     Align(
                       alignment: Alignment.centerRight,
                       child: IconButton(
-                        tooltip: 'Bookmark',
+                        tooltip: l10n.t('qbank_bookmarks_tooltip'),
                         onPressed: widget.userId == null
                             ? null
                             : () async {
@@ -1096,7 +1109,7 @@ class _StudentCqListState extends ConsumerState<_StudentCqList> {
                                 ref.invalidate(qbankBookmarksProvider(widget.userId!));
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(this.context).showSnackBar(
-                                  SnackBar(content: Text('Bookmark updated', style: GoogleFonts.nunito())),
+                                  SnackBar(content: Text(l10n.t('qbank_bookmark_updated'), style: GoogleFonts.hindSiliguri())),
                                 );
                               },
                         icon: const Icon(Icons.bookmark_add_outlined),
@@ -1110,7 +1123,7 @@ class _StudentCqListState extends ConsumerState<_StudentCqList> {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('CQ load failed: $e')),
+      error: (e, _) => Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
     );
   }
 }

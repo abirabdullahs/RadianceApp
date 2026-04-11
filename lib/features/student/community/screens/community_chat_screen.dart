@@ -13,10 +13,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../../app/i18n/app_localizations.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/storage_upload_hint.dart';
 import '../../../../core/supabase_client.dart';
+import '../../../../core/supabase_storage_image_url.dart';
 import '../../../../features/admin/widgets/admin_drawer.dart';
 import '../../../../features/admin/widgets/admin_responsive_scaffold.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
@@ -280,8 +282,9 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       await _fetchMessages();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('পাঠানো ব্যর্থ: $e')),
+          SnackBar(content: Text('${l10n.t('community_send_failed')}: $e', style: GoogleFonts.hindSiliguri())),
         );
       }
     } finally {
@@ -323,8 +326,14 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       await _fetchMessages();
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('আপলোড ব্যর্থ: ${storageUploadHint(e)}')),
+          SnackBar(
+            content: Text(
+              '${l10n.t('upload_failed')}: ${storageUploadHint(e)}',
+              style: GoogleFonts.hindSiliguri(),
+            ),
+          ),
         );
       }
     } finally {
@@ -374,6 +383,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
   }
 
   void _showAttachmentOptions(String uid) {
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -383,7 +393,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: Text('গ্যালারি থেকে ছবি', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('community_gallery_photo'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickImageGallery(uid);
@@ -391,7 +401,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.insert_drive_file_outlined),
-              title: Text('ফাইল / PDF', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('community_file_pdf'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickFile(uid);
@@ -409,8 +419,10 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
     final url = msg['file_url']?.toString();
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('পিন করা বার্তা', style: GoogleFonts.hindSiliguri()),
+      builder: (ctx) {
+        final dl10n = AppLocalizations.of(ctx);
+        return AlertDialog(
+        title: Text(dl10n.t('community_pinned_title'), style: GoogleFonts.hindSiliguri()),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,7 +435,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
               if (type == 'file' && url != null)
                 TextButton(
                   onPressed: () => _openExternalUrl(url),
-                  child: Text('খুলুন', style: GoogleFonts.hindSiliguri()),
+                  child: Text(dl10n.t('notes_open'), style: GoogleFonts.hindSiliguri()),
                 ),
             ],
           ),
@@ -431,31 +443,35 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('বন্ধ', style: GoogleFonts.hindSiliguri()),
+            child: Text(dl10n.t('close'), style: GoogleFonts.hindSiliguri()),
           ),
         ],
-      ),
+      );
+      },
     );
   }
 
   void _showGroupInfo() {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) {
+        final dl10n = AppLocalizations.of(ctx);
+        return AlertDialog(
         title: Text(widget.groupName, style: GoogleFonts.hindSiliguri()),
         content: Text(
           _groupDescription?.trim().isNotEmpty == true
               ? _groupDescription!
-              : 'কোনো বিবরণ নেই।',
+              : dl10n.t('community_no_description'),
           style: GoogleFonts.hindSiliguri(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
+            child: Text(dl10n.t('ok'), style: GoogleFonts.hindSiliguri()),
           ),
         ],
-      ),
+      );
+      },
     );
   }
 
@@ -464,8 +480,9 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
     if (u == null) return;
     if (!await launchUrl(u, mode: LaunchMode.externalApplication)) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('লিংক খোলা যায়নি')),
+          SnackBar(content: Text(l10n.t('community_link_failed'), style: GoogleFonts.hindSiliguri())),
         );
       }
     }
@@ -507,6 +524,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
     final isOwn = senderId == currentUid;
     final text = msg['content']?.toString() ?? '';
     final type = msg['type']?.toString() ?? 'text';
+    final l10n = AppLocalizations.of(context);
 
     showModalBottomSheet<void>(
       context: context,
@@ -517,7 +535,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.reply_outlined),
-              title: Text('রিপ্লাই', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('community_reply'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 setState(() => _replyingTo = msg);
@@ -525,7 +543,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.copy_outlined),
-              title: Text('কপি', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('community_copy'), style: GoogleFonts.hindSiliguri()),
               onTap: () async {
                 Navigator.pop(ctx);
                 final copyText = type == 'text'
@@ -534,7 +552,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                 await Clipboard.setData(ClipboardData(text: copyText));
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('কপি হয়েছে', style: GoogleFonts.hindSiliguri())),
+                    SnackBar(content: Text(l10n.t('community_copied'), style: GoogleFonts.hindSiliguri())),
                   );
                 }
               },
@@ -543,7 +561,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
               ListTile(
                 leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
                 title: Text(
-                  'মুছুন',
+                  l10n.t('community_delete'),
                   style: GoogleFonts.hindSiliguri(
                     color: Theme.of(context).colorScheme.error,
                   ),
@@ -559,7 +577,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                   } catch (e) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('$e')),
+                        SnackBar(content: Text('${AppLocalizations.of(context).t('failed')}: $e', style: GoogleFonts.hindSiliguri())),
                       );
                     }
                   }
@@ -582,6 +600,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final userAsync = ref.watch(currentUserProvider);
     final theme = Theme.of(context);
 
@@ -589,8 +608,8 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       data: (user) {
         if (user == null) {
           return _communityShell(
-            title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-            body: const Center(child: Text('লগইন প্রয়োজন')),
+            title: Text(l10n.t('chat'), style: GoogleFonts.hindSiliguri()),
+            body: Center(child: Text(l10n.t('qbank_login_required'), style: GoogleFonts.hindSiliguri())),
           );
         }
         final uid = user.id;
@@ -611,7 +630,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
               ),
               if (!_loadingMeta)
                 Text(
-                  '$_memberCount জন সদস্য',
+                  l10n.t('community_members_n').replaceAll('{n}', '$_memberCount'),
                   style: GoogleFonts.nunito(
                     fontSize: 12,
                     color: theme.colorScheme.onSurfaceVariant,
@@ -636,7 +655,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                     children: [
                       if (_pinnedMessage != null)
                         Material(
-                          color: const Color(0xFFFFF9C4),
+                          color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.85),
                           child: InkWell(
                             onTap: () => _showPinnedFull(_pinnedMessage!),
                             child: Padding(
@@ -646,17 +665,29 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.push_pin, size: 18, color: Color(0xFFF57F17)),
+                                  Icon(
+                                    Icons.push_pin_rounded,
+                                    size: 18,
+                                    color: theme.colorScheme.onTertiaryContainer,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      _previewSnippet(_pinnedMessage!),
+                                      _previewSnippet(l10n, _pinnedMessage!),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.hindSiliguri(fontSize: 14),
+                                      style: GoogleFonts.hindSiliguri(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: theme.colorScheme.onTertiaryContainer,
+                                      ),
                                     ),
                                   ),
-                                  const Icon(Icons.chevron_right, size: 20),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 20,
+                                    color: theme.colorScheme.onTertiaryContainer.withValues(alpha: 0.8),
+                                  ),
                                 ],
                               ),
                             ),
@@ -677,6 +708,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                                 final msg = _messages[index];
                                 final sender = _senders[msg['sender_id'] as String?];
                                 return _ChatBubble(
+                                  l10n: l10n,
                                   layoutWidth: contentWidth,
                                   message: msg,
                                   sender: sender,
@@ -710,7 +742,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  _previewSnippet(_replyingTo!),
+                                  _previewSnippet(l10n, _replyingTo!),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.hindSiliguri(fontSize: 13),
@@ -723,56 +755,91 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
                             ],
                           ),
                         ),
-                      SafeArea(
-                        child: Material(
-                          elevation: 8,
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              bottom: MediaQuery.viewInsetsOf(context).bottom,
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.attach_file),
-                                  onPressed: _uploading || _sending
-                                      ? null
-                                      : () => _showAttachmentOptions(uid),
-                                ),
-                                Expanded(
-                                  child: TextField(
-                                    controller: _textController,
-                                    minLines: 1,
-                                    maxLines: 4,
-                                    enabled: !_sending && !_uploading,
-                                    decoration: InputDecoration(
-                                      hintText: 'মেসেজ লিখুন...',
-                                      hintStyle: GoogleFonts.hindSiliguri(),
-                                      border: InputBorder.none,
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    style: GoogleFonts.hindSiliguri(),
-                                    onChanged: (_) => setState(() {}),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          8,
+                          6,
+                          8,
+                          MediaQuery.viewInsetsOf(context).bottom,
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: Material(
+                            elevation: 3,
+                            shadowColor: Colors.black26,
+                            borderRadius: BorderRadius.circular(28),
+                            color: theme.colorScheme.surfaceContainerHigh,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.attach_file_rounded),
+                                    onPressed: _uploading || _sending
+                                        ? null
+                                        : () => _showAttachmentOptions(uid),
                                   ),
-                                ),
-                                IconButton.filled(
-                                  onPressed: (_sending ||
-                                          _uploading ||
-                                          _textController.text.trim().isEmpty)
-                                      ? null
-                                      : () => _sendText(uid),
-                                  icon: _sending
-                                      ? const SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.send_rounded),
-                                ),
-                              ],
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _textController,
+                                      minLines: 1,
+                                      maxLines: 4,
+                                      enabled: !_sending && !_uploading,
+                                      decoration: InputDecoration(
+                                        hintText: l10n.t('community_message_placeholder'),
+                                        hintStyle: GoogleFonts.hindSiliguri(
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                        filled: true,
+                                        fillColor: theme.colorScheme.surfaceContainerHighest,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(22),
+                                          borderSide: BorderSide(
+                                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(22),
+                                          borderSide: BorderSide(
+                                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(22),
+                                          borderSide: BorderSide(
+                                            color: theme.colorScheme.primary,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                      style: GoogleFonts.hindSiliguri(),
+                                    ),
+                                  ),
+                                  ListenableBuilder(
+                                    listenable: _textController,
+                                    builder: (context, _) {
+                                      final empty = _textController.text.trim().isEmpty;
+                                      return IconButton.filled(
+                                        onPressed: (_sending || _uploading || empty)
+                                            ? null
+                                            : () => _sendText(uid),
+                                        icon: _sending
+                                            ? const SizedBox(
+                                                width: 22,
+                                                height: 22,
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              )
+                                            : const Icon(Icons.send_rounded),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -786,31 +853,32 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
         );
       },
       loading: () => _communityShell(
-        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('chat'), style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (e, _) => _communityShell(
-        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        body: Center(child: Text('$e')),
+        title: Text(l10n.t('chat'), style: GoogleFonts.hindSiliguri()),
+        body: Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
       ),
     );
   }
 
-  String _previewSnippet(Map<String, dynamic> msg) {
+  String _previewSnippet(AppLocalizations l10n, Map<String, dynamic> msg) {
     final type = msg['type']?.toString() ?? 'text';
-    if (type == 'image') return '📷 ছবি';
+    if (type == 'image') return l10n.t('community_preview_photo');
     if (type == 'file') {
       return msg['content']?.toString().isNotEmpty == true
           ? '📎 ${msg['content']}'
-          : '📎 ফাইল';
+          : l10n.t('community_preview_file');
     }
     final c = msg['content']?.toString() ?? '';
-    return c.isEmpty ? 'মেসেজ' : c;
+    return c.isEmpty ? l10n.t('community_preview_message') : c;
   }
 }
 
 class _ChatBubble extends StatelessWidget {
   const _ChatBubble({
+    required this.l10n,
     required this.layoutWidth,
     required this.message,
     required this.sender,
@@ -821,6 +889,8 @@ class _ChatBubble extends StatelessWidget {
     required this.onTapImage,
     required this.onTapFile,
   });
+
+  final AppLocalizations l10n;
 
   /// Width of the chat column (parent); used for responsive bubble/image max width.
   final double layoutWidth;
@@ -861,7 +931,22 @@ class _ChatBubble extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: bubbleColor,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isOwn ? 16 : 5),
+                  bottomRight: Radius.circular(isOwn ? 5 : 16),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.shadow.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
+                ),
               ),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
@@ -878,7 +963,7 @@ class _ChatBubble extends StatelessWidget {
                           ],
                           Flexible(
                             child: Text(
-                              sender?.fullNameBn ?? 'সদস্য',
+                              sender?.fullNameBn ?? l10n.t('member_fallback'),
                               style: GoogleFonts.hindSiliguri(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -903,7 +988,7 @@ class _ChatBubble extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'অ্যাডমিন',
+                              l10n.t('community_admin'),
                               style: GoogleFonts.hindSiliguri(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -928,7 +1013,7 @@ class _ChatBubble extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          _replyPreviewText(replyParent!),
+                          _replyPreviewText(l10n, replyParent!),
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.hindSiliguri(
@@ -946,7 +1031,10 @@ class _ChatBubble extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
-                            imageUrl: fileUrl,
+                            imageUrl: supabaseStorageRenderImageUrl(
+                              fileUrl,
+                              width: 800,
+                            ),
                             width: imageMaxW,
                             fit: BoxFit.cover,
                             placeholder: (context, url) => SizedBox(
@@ -969,7 +1057,7 @@ class _ChatBubble extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                content.isNotEmpty ? content : 'ফাইল',
+                                content.isNotEmpty ? content : l10n.t('community_file_label'),
                                 style: GoogleFonts.hindSiliguri(
                                   fontSize: 14,
                                   color: fg,
@@ -1009,16 +1097,17 @@ class _ChatBubble extends StatelessWidget {
     );
   }
 
-  String _replyPreviewText(Map<String, dynamic> parent) {
-    final t = parent['type']?.toString() ?? 'text';
-    if (t == 'image') return '📷 ছবি';
-    if (t == 'file') {
-      return parent['content']?.toString().isNotEmpty == true
-          ? '📎 ${parent['content']}'
-          : '📎 ফাইল';
-    }
-    return parent['content']?.toString() ?? '';
+}
+
+String _replyPreviewText(AppLocalizations l10n, Map<String, dynamic> parent) {
+  final t = parent['type']?.toString() ?? 'text';
+  if (t == 'image') return l10n.t('community_preview_photo');
+  if (t == 'file') {
+    return parent['content']?.toString().isNotEmpty == true
+        ? '📎 ${parent['content']}'
+        : l10n.t('community_preview_file');
   }
+  return parent['content']?.toString() ?? '';
 }
 
 extension on Color {

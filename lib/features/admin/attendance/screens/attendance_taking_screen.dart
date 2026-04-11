@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../core/supabase_client.dart';
+import '../../../../core/supabase_storage_image_url.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../providers/attendance_providers.dart';
@@ -682,7 +683,7 @@ class _Avatar extends StatelessWidget {
         backgroundColor: Colors.grey.shade300,
         child: ClipOval(
           child: CachedNetworkImage(
-            imageUrl: url,
+            imageUrl: supabaseStorageRenderImageUrl(url, width: (size * 2).round(), height: (size * 2).round()),
             width: size,
             height: size,
             fit: BoxFit.cover,

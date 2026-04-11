@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'dart:async';
 
+import '../../../../app/i18n/app_localizations.dart';
 import '../../../../app/theme.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../../../../shared/models/question_model.dart';
@@ -101,6 +102,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
     return FutureBuilder<_TakeBundle>(
       future: _future,
       builder: (context, snap) {
+        final l10n = AppLocalizations.of(context);
         if (snap.connectionState != ConnectionState.done) {
           return Scaffold(
             drawer: const StudentDrawer(),
@@ -122,7 +124,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
               leadingWidth: leadingWidthForDrawer(context),
               actions: const [AppBarDrawerAction()],
             ),
-            body: Center(child: Text('${snap.error}')),
+            body: Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
           );
         }
         final b = snap.data!;
@@ -138,7 +140,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
               actions: const [AppBarDrawerAction()],
             ),
             body: Center(
-              child: Text('প্রশ্ন নেই', style: GoogleFonts.hindSiliguri()),
+              child: Text(l10n.t('exam_no_questions'), style: GoogleFonts.hindSiliguri()),
             ),
           );
         }
@@ -156,7 +158,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'এটি অফলাইন পরীক্ষা। নির্ধারিত সময়ে সেন্টারে উপস্থিত হোন।',
+                  l10n.t('exam_offline_notice'),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.hindSiliguri(fontSize: 16),
                 ),
@@ -191,7 +193,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
                     ? null
                     : () => _submit(context, b.exam, auto: false),
                 child: Text(
-                  _practiceMode ? 'শেষ করুন' : 'জমা দিন',
+                  _practiceMode ? l10n.t('exam_finish_practice') : l10n.t('exam_submit'),
                   style: GoogleFonts.hindSiliguri(color: Colors.white),
                 ),
               ),
@@ -214,6 +216,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
               Expanded(
                 child: _showReview
                     ? _ReviewView(
+                        l10n: l10n,
                         exam: b.exam,
                         questions: qs,
                         answers: _answers,
@@ -238,7 +241,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
                                       q.imageUrl!,
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) => Text(
-                                        'ইমেজ লোড হয়নি',
+                                        l10n.t('exam_image_load_failed'),
                                         style: GoogleFonts.hindSiliguri(
                                           color: Theme.of(context).colorScheme.error,
                                         ),
@@ -262,7 +265,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: TextButton(
                     onPressed: () => context.go('/student/exams'),
-                    child: Text('তালিকায় ফিরুন', style: GoogleFonts.hindSiliguri()),
+                    child: Text(l10n.t('exam_back_to_list'), style: GoogleFonts.hindSiliguri()),
                   ),
                 )
               else
@@ -280,7 +283,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
                               );
                             }
                           : null,
-                      child: Text('আগের', style: GoogleFonts.hindSiliguri()),
+                      child: Text(l10n.t('exam_prev'), style: GoogleFonts.hindSiliguri()),
                     ),
                     TextButton(
                       onPressed: _index < qs.length - 1
@@ -291,7 +294,7 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
                               );
                             }
                           : null,
-                      child: Text('পরের', style: GoogleFonts.hindSiliguri()),
+                      child: Text(l10n.t('exam_next'), style: GoogleFonts.hindSiliguri()),
                     ),
                   ],
                 ),
@@ -341,8 +344,10 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
           SnackBar(
             content: Text(
               _practiceMode
-                  ? 'প্র্যাকটিস শেষ'
-                  : (auto ? 'সময় শেষ — অটো সাবমিট হয়েছে' : 'জমা হয়েছে'),
+                  ? AppLocalizations.of(context).t('exam_snackbar_practice_done')
+                  : (auto
+                      ? AppLocalizations.of(context).t('exam_snackbar_auto_submit')
+                      : AppLocalizations.of(context).t('exam_snackbar_submitted')),
               style: GoogleFonts.hindSiliguri(),
             ),
           ),
@@ -353,7 +358,10 @@ class _ExamTakingScreenState extends State<ExamTakingScreen> {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        final l10n = AppLocalizations.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${l10n.t('failed')}: $e', style: GoogleFonts.hindSiliguri())),
+        );
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -415,11 +423,13 @@ class _MarkdownLatexText extends StatelessWidget {
 
 class _ReviewView extends StatelessWidget {
   const _ReviewView({
+    required this.l10n,
     required this.exam,
     required this.questions,
     required this.answers,
   });
 
+  final AppLocalizations l10n;
   final ExamModel exam;
   final List<QuestionModel> questions;
   final Map<String, String> answers;
@@ -440,12 +450,15 @@ class _ReviewView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Q${i + 1}', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                Text(
+                  l10n.t('exam_question_n').replaceAll('{n}', '${i + 1}'),
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 6),
                 _MarkdownLatexText(data: q.questionText),
                 const SizedBox(height: 8),
                 Text(
-                  'আপনার উত্তর: ${selected ?? 'উত্তর দেননি'}',
+                  '${l10n.t('exam_review_your_answer')} ${selected ?? l10n.t('exam_review_skipped')}',
                   style: GoogleFonts.hindSiliguri(
                     color: isCorrect
                         ? Colors.green
@@ -453,7 +466,7 @@ class _ReviewView extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'সঠিক উত্তর: ${q.correctOption}',
+                  '${l10n.t('exam_review_correct')} ${q.correctOption}',
                   style: GoogleFonts.hindSiliguri(
                     fontWeight: FontWeight.w700,
                     color: Colors.green,
