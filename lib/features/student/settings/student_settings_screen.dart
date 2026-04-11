@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
+import '../../../app/language_settings.dart';
 import '../../../app/widgets/theme_picker_sheet.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../widgets/student_drawer.dart';
@@ -51,7 +53,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'পাসওয়ার্ড পরিবর্তন হয়েছে',
+            AppLocalizations.of(context).t('password_changed'),
             style: GoogleFonts.hindSiliguri(color: Colors.white),
           ),
         ),
@@ -61,7 +63,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'ব্যর্থ: ${_messageForError(e)}',
+            '${AppLocalizations.of(context).t('failed')}: ${_messageForError(e)}',
             style: GoogleFonts.hindSiliguri(color: Colors.white),
           ),
         ),
@@ -72,12 +74,13 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
   }
 
   String _messageForError(Object e) {
+    final l10n = AppLocalizations.of(context);
     final s = e.toString().toLowerCase();
     if (s.contains('invalid') && s.contains('password')) {
-      return 'বর্তমান পাসওয়ার্ড ভুল';
+      return l10n.t('wrong_current_password');
     }
     if (s.contains('same')) {
-      return 'নতুন পাসওয়ার্ড আগের মতো হতে পারবে না';
+      return l10n.t('new_password_not_same');
     }
     return '$e';
   }
@@ -93,7 +96,9 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final currentLocale = ref.watch(languageSettingsProvider).locale.languageCode;
 
     return Scaffold(
       drawer: const StudentDrawer(),
@@ -102,7 +107,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
         title: Text(
-          'সেটিংস',
+          l10n.t('settings'),
           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
         ),
         actions: const [AppBarDrawerAction()],
@@ -114,11 +119,11 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
             child: ListTile(
               leading: Icon(Icons.person_outline, color: scheme.primary),
               title: Text(
-                'প্রোফাইল সম্পাদনা',
+                l10n.t('edit_profile'),
                 style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
-                'নাম, ঠিকানা, ছবি',
+                l10n.t('name_address_photo'),
                 style: GoogleFonts.hindSiliguri(
                   fontSize: 13,
                   color: scheme.onSurfaceVariant,
@@ -133,11 +138,11 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
             child: ListTile(
               leading: Icon(Icons.palette_outlined, color: scheme.primary),
               title: Text(
-                'থিম ও রঙ',
+                l10n.t('theme_and_colors'),
                 style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
-                'নীল, সবুজ, বেগুনি ইত্যাদি থেকে বাছাই করুন',
+                l10n.t('choose_theme_colors'),
                 style: GoogleFonts.hindSiliguri(
                   fontSize: 13,
                   color: scheme.onSurfaceVariant,
@@ -147,9 +152,85 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
               onTap: () => showThemePickerSheet(context, ref),
             ),
           ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.language_outlined, color: scheme.primary),
+              title: Text(
+                l10n.t('language'),
+                style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                l10n.t('choose_language'),
+                style: GoogleFonts.hindSiliguri(
+                  fontSize: 13,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    currentLocale == 'en' ? l10n.t('english') : l10n.t('bangla'),
+                    style: GoogleFonts.hindSiliguri(
+                      fontWeight: FontWeight.w600,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              onTap: () async {
+                final selected = await showModalBottomSheet<String>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (ctx) {
+                    final selectedCode = ref
+                        .read(languageSettingsProvider)
+                        .locale
+                        .languageCode;
+                    return SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.translate),
+                            title: Text(
+                              l10n.t('bangla'),
+                              style: GoogleFonts.hindSiliguri(),
+                            ),
+                            trailing: selectedCode == 'bn'
+                                ? Icon(Icons.check, color: scheme.primary)
+                                : null,
+                            onTap: () => Navigator.of(ctx).pop('bn'),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.translate),
+                            title: Text(
+                              l10n.t('english'),
+                              style: GoogleFonts.hindSiliguri(),
+                            ),
+                            trailing: selectedCode == 'en'
+                                ? Icon(Icons.check, color: scheme.primary)
+                                : null,
+                            onTap: () => Navigator.of(ctx).pop('en'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+                if (selected == null) return;
+                await ref
+                    .read(languageSettingsProvider.notifier)
+                    .setLocale(Locale(selected));
+              },
+            ),
+          ),
           const SizedBox(height: 24),
           Text(
-            'পাসওয়ার্ড পরিবর্তন',
+            l10n.t('change_password'),
             style: GoogleFonts.hindSiliguri(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -167,7 +248,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   enabled: !_submitting,
                   obscureText: _obscureCurrent,
                   decoration: _dec(
-                    'বর্তমান পাসওয়ার্ড',
+                    l10n.t('current_password'),
                     suffix: IconButton(
                       icon: Icon(
                         _obscureCurrent ? Icons.visibility : Icons.visibility_off,
@@ -178,7 +259,9 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   ),
                   style: GoogleFonts.nunito(),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'বর্তমান পাসওয়ার্ড দিন';
+                    if (v == null || v.isEmpty) {
+                      return l10n.t('current_password_required');
+                    }
                     return null;
                   },
                 ),
@@ -188,7 +271,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   enabled: !_submitting,
                   obscureText: _obscureNew,
                   decoration: _dec(
-                    'নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)',
+                    l10n.t('new_password_min'),
                     suffix: IconButton(
                       icon: Icon(
                         _obscureNew ? Icons.visibility : Icons.visibility_off,
@@ -199,7 +282,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   style: GoogleFonts.nunito(),
                   validator: (v) {
                     if (v == null || v.length < 6) {
-                      return 'কমপক্ষে ৬ অক্ষর';
+                      return l10n.t('min_6_chars');
                     }
                     return null;
                   },
@@ -210,7 +293,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   enabled: !_submitting,
                   obscureText: _obscureConfirm,
                   decoration: _dec(
-                    'নতুন পাসওয়ার্ড আবার',
+                    l10n.t('new_password_again'),
                     suffix: IconButton(
                       icon: Icon(
                         _obscureConfirm ? Icons.visibility : Icons.visibility_off,
@@ -221,7 +304,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                   ),
                   style: GoogleFonts.nunito(),
                   validator: (v) {
-                    if (v != _newPw.text) return 'মিলছে না';
+                    if (v != _newPw.text) return l10n.t('not_matching');
                     return null;
                   },
                 ),
@@ -240,7 +323,7 @@ class _StudentSettingsScreenState extends ConsumerState<StudentSettingsScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : Text(
-                          'পাসওয়ার্ড আপডেট করুন',
+                          l10n.t('update_password'),
                           style: GoogleFonts.hindSiliguri(
                             fontWeight: FontWeight.w600,
                           ),

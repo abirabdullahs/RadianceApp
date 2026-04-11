@@ -1,4 +1,4 @@
--- RPC: generate monthly dues into payment_schedule from active enrollments.
+-- Restrict generate_monthly_dues to admins (direct RPC from app + service role).
 
 CREATE OR REPLACE FUNCTION public.generate_monthly_dues(
   p_month DATE DEFAULT NULL,
@@ -18,6 +18,11 @@ DECLARE
   v_payment_type_id UUID;
   v_affected INT := 0;
 BEGIN
+  -- Logged-in users must be admin. `service_role` (Edge/cron) has no JWT uid — allow.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'forbidden: admin only';
+  END IF;
+
   SELECT COALESCE(ps.due_day_of_month, 15)
   INTO v_due_day
   FROM public.payment_settings ps
@@ -119,6 +124,3 @@ BEGIN
   );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.generate_monthly_dues(DATE, UUID, BOOLEAN) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.generate_monthly_dues(DATE, UUID, BOOLEAN) TO service_role;

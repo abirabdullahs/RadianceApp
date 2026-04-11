@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../i18n/app_localizations.dart';
 import '../theme.dart';
 import '../theme_settings.dart';
 
@@ -19,6 +20,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
             builder: (context, ref, _) {
               final ts = ref.watch(themeSettingsProvider);
               final scheme = Theme.of(context).colorScheme;
+              final l10n = AppLocalizations.of(context);
 
               return SingleChildScrollView(
                 child: Column(
@@ -26,7 +28,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'থিম বাছাই করুন',
+                      l10n.t('choose_theme'),
                       style: GoogleFonts.hindSiliguri(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -34,7 +36,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'রঙের সেট ও লাইট/ডার্ক মোড এখান থেকে বদলান।',
+                      l10n.t('change_color_mode'),
                       style: GoogleFonts.hindSiliguri(
                         fontSize: 13,
                         color: scheme.onSurfaceVariant,
@@ -42,7 +44,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'রঙের থিম',
+                      l10n.t('color_theme'),
                       style: GoogleFonts.hindSiliguri(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -61,7 +63,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                     ),
                     const Divider(),
                     Text(
-                      'ডিসপ্লে মোড',
+                      l10n.t('display_mode'),
                       style: GoogleFonts.hindSiliguri(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -69,7 +71,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                     ),
                     const SizedBox(height: 8),
                     ListTile(
-                      title: Text('সিস্টেম (ডিভাইস অনুযায়ী)', style: GoogleFonts.hindSiliguri()),
+                      title: Text(l10n.t('system_mode'), style: GoogleFonts.hindSiliguri()),
                       trailing: ts.mode == ThemeMode.system
                           ? Icon(Icons.check, color: scheme.primary)
                           : null,
@@ -77,7 +79,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                           ref.read(themeSettingsProvider.notifier).setMode(ThemeMode.system),
                     ),
                     ListTile(
-                      title: Text('লাইট', style: GoogleFonts.hindSiliguri()),
+                      title: Text(l10n.t('light_mode'), style: GoogleFonts.hindSiliguri()),
                       trailing: ts.mode == ThemeMode.light
                           ? Icon(Icons.check, color: scheme.primary)
                           : null,
@@ -85,7 +87,7 @@ Future<void> showThemePickerSheet(BuildContext context, WidgetRef ref) async {
                           ref.read(themeSettingsProvider.notifier).setMode(ThemeMode.light),
                     ),
                     ListTile(
-                      title: Text('ডার্ক', style: GoogleFonts.hindSiliguri()),
+                      title: Text(l10n.t('dark_mode'), style: GoogleFonts.hindSiliguri()),
                       trailing: ts.mode == ThemeMode.dark
                           ? Icon(Icons.check, color: scheme.primary)
                           : null,

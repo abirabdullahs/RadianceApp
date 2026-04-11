@@ -110,7 +110,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 final route = n['action_route']?.toString();
                 final created = DateTime.tryParse(n['created_at']?.toString() ?? '');
                 return Material(
-                  color: read ? null : scheme.primaryContainer.withValues(alpha: 0.35),
+                  color: read ? null : scheme.primaryContainer.withValues(alpha: 0.55),
                   child: InkWell(
                     onTap: () async {
                       if (id != null) {
@@ -144,7 +144,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                 child: Text(
                                   title,
                                   style: GoogleFonts.hindSiliguri(
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: read ? FontWeight.w600 : FontWeight.w800,
                                     fontSize: 15,
                                   ),
                                 ),
@@ -152,7 +152,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          Text(body, style: GoogleFonts.hindSiliguri(fontSize: 14)),
+                          Text(
+                            body,
+                            style: GoogleFonts.hindSiliguri(
+                              fontSize: 14,
+                              fontWeight: read ? FontWeight.w400 : FontWeight.w600,
+                            ),
+                          ),
                           if (created != null) ...[
                             const SizedBox(height: 6),
                             Text(

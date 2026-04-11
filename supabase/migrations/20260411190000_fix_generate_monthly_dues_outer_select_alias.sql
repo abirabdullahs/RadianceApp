@@ -1,4 +1,5 @@
--- RPC: generate monthly dues into payment_schedule from active enrollments.
+-- Fix: outer INSERT...SELECT referenced `e` but subquery is aliased `src` (42P01 missing FROM-clause for "e").
+-- Idempotent: replaces same function as 20260411183000 with corrected column qualifiers.
 
 CREATE OR REPLACE FUNCTION public.generate_monthly_dues(
   p_month DATE DEFAULT NULL,
@@ -18,6 +19,10 @@ DECLARE
   v_payment_type_id UUID;
   v_affected INT := 0;
 BEGIN
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'forbidden: admin only';
+  END IF;
+
   SELECT COALESCE(ps.due_day_of_month, 15)
   INTO v_due_day
   FROM public.payment_settings ps
@@ -119,6 +124,3 @@ BEGIN
   );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.generate_monthly_dues(DATE, UUID, BOOLEAN) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.generate_monthly_dues(DATE, UUID, BOOLEAN) TO service_role;

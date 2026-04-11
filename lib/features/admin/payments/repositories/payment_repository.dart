@@ -16,6 +16,7 @@ import '../../../../shared/models/advance_balance_model.dart';
 import '../../../../shared/models/payment_report_models.dart';
 import '../../../../shared/models/payment_settings_model.dart';
 import '../../../../shared/models/user_model.dart';
+import '../../students/repositories/student_repository.dart';
 
 /// Payments, dues, revenue aggregates, overdue lists (Supabase).
 class PaymentRepository {
@@ -346,6 +347,42 @@ class PaymentRepository {
     return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
   }
 
+  Future<PaymentLedgerModel?> getPaymentLedgerById(String id) async {
+    final row = await _client.from(kTablePaymentLedger).select().eq('id', id).maybeSingle();
+    if (row == null) return null;
+    return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<PaymentLedgerModel> updatePaymentLedgerRow({
+    required String id,
+    required double amountDue,
+    required double discountAmount,
+    required double fineAmount,
+    required double amountPaid,
+    required String paymentMethod,
+    required LedgerPaymentStatus status,
+    String? note,
+    required DateTime paidAt,
+  }) async {
+    await _client.from(kTablePaymentLedger).update(<String, dynamic>{
+      'amount_due': amountDue,
+      'discount_amount': discountAmount,
+      'fine_amount': fineAmount,
+      'amount_paid': amountPaid,
+      'payment_method': paymentMethod,
+      'status': status.toJson(),
+      'note': note,
+      'paid_at': paidAt.toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+    final row = await _client.from(kTablePaymentLedger).select().eq('id', id).single();
+    return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> deletePaymentLedgerById(String id) async {
+    await _client.from(kTablePaymentLedger).delete().eq('id', id);
+  }
+
   Future<List<PaymentScheduleModel>> getPaymentSchedule({
     String? studentId,
     String? courseId,
@@ -595,6 +632,39 @@ class PaymentRepository {
     return PaymentScheduleModel.fromJson(Map<String, dynamic>.from(row));
   }
 
+  /// Updates a schedule row by primary key. Use when the row already exists.
+  ///
+  /// Composite [upsertPaymentSchedule] can fail with duplicate `payment_schedule_pkey`
+  /// if `ON CONFLICT (student_id, course_id, payment_type_id, for_month)` does not
+  /// match the stored row (e.g. `for_month` NULL semantics or date normalization),
+  /// causing an `INSERT` with an existing `id`.
+  Future<PaymentScheduleModel> updatePaymentScheduleById({
+    required String id,
+    required DateTime dueDate,
+    required double amount,
+    required PaymentScheduleStatus status,
+    required double paidAmount,
+    required String paymentTypeCode,
+    String? note,
+  }) async {
+    final payload = <String, dynamic>{
+      'payment_type_code': paymentTypeCode,
+      'due_date': dateToSqlDate(DateTime(dueDate.year, dueDate.month, dueDate.day)),
+      'amount': amount,
+      'status': status.toJson(),
+      'paid_amount': paidAmount,
+      'note': note,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final row = await _client
+        .from(kTablePaymentSchedule)
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+    return PaymentScheduleModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
   Future<PaymentSettingsModel> getPaymentSettings() async {
     final row = await _client
         .from(kTablePaymentSettings)
@@ -739,12 +809,16 @@ class PaymentRepository {
     required String studentId,
     required int year,
   }) async {
+    final resolved = await StudentRepository().resolveStudentUserId(studentId);
+    if (resolved == null) {
+      throw StateError('Student not found for: $studentId');
+    }
     final start = DateTime(year, 1, 1);
     final end = DateTime(year + 1, 1, 1);
     final schedules = await _client
         .from(kTablePaymentSchedule)
         .select()
-        .eq('student_id', studentId)
+        .eq('student_id', resolved)
         .gte('due_date', dateToSqlDate(start))
         .lt('due_date', dateToSqlDate(end))
         .order('due_date', ascending: false);

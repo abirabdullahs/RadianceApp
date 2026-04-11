@@ -123,19 +123,34 @@ class PaymentService {
     final baseAmount = prevSchedule?.amount ?? request.amountDue;
     final nextPaid = _to2((prevSchedule?.paidAmount ?? 0) + request.amountPaid);
     final nextStatus = _deriveScheduleStatus(baseAmount: baseAmount, paidAmount: nextPaid);
-    final schedule = await _repository.upsertPaymentSchedule(
-      id: prevSchedule?.id,
-      studentId: request.studentId,
-      courseId: request.courseId,
-      paymentTypeId: request.paymentTypeId,
-      paymentTypeCode: request.paymentTypeCode,
-      forMonth: request.forMonth,
-      dueDate: request.dueDate ?? prevSchedule?.dueDate ?? DateTime.now(),
-      amount: baseAmount,
-      status: nextStatus,
-      paidAmount: nextPaid,
-      note: request.note ?? prevSchedule?.note,
-    );
+    final dueDate = request.dueDate ?? prevSchedule?.dueDate ?? DateTime.now();
+    final note = request.note ?? prevSchedule?.note;
+    final PaymentScheduleModel schedule;
+    if (prevSchedule == null) {
+      schedule = await _repository.upsertPaymentSchedule(
+        id: null,
+        studentId: request.studentId,
+        courseId: request.courseId,
+        paymentTypeId: request.paymentTypeId,
+        paymentTypeCode: request.paymentTypeCode,
+        forMonth: request.forMonth,
+        dueDate: dueDate,
+        amount: baseAmount,
+        status: nextStatus,
+        paidAmount: nextPaid,
+        note: note,
+      );
+    } else {
+      schedule = await _repository.updatePaymentScheduleById(
+        id: prevSchedule.id,
+        dueDate: dueDate,
+        amount: baseAmount,
+        status: nextStatus,
+        paidAmount: nextPaid,
+        paymentTypeCode: request.paymentTypeCode,
+        note: note,
+      );
+    }
 
     final newAdvanceAmount = _to2(request.amountPaid - netDue);
     AdvanceBalanceModel? advanceBalance;
@@ -184,6 +199,128 @@ class PaymentService {
       totalPaid: _to2(totalPaid),
       totalAdvanceAdded: _to2(totalAdvanceAdded),
     );
+  }
+
+  /// Updates a row in `payment_ledger` and reconciles `payment_schedule` + advance balance.
+  Future<PaymentLedgerModel> updateRecordedPayment({
+    required PaymentLedgerModel previous,
+    required double amountDue,
+    required double discountAmount,
+    required double fineAmount,
+    required double amountPaid,
+    required String paymentMethod,
+    required DateTime paidAt,
+    String? note,
+  }) async {
+    final netDue = _to2(amountDue - discountAmount + fineAmount);
+    final status = _deriveLedgerStatus(netDue: netDue, amountPaid: amountPaid);
+
+    final updated = await _repository.updatePaymentLedgerRow(
+      id: previous.id,
+      amountDue: amountDue,
+      discountAmount: discountAmount,
+      fineAmount: fineAmount,
+      amountPaid: amountPaid,
+      paymentMethod: paymentMethod,
+      status: status,
+      note: note,
+      paidAt: paidAt,
+    );
+
+    final schedule = await _repository.getScheduleTarget(
+      studentId: previous.studentId,
+      courseId: previous.courseId,
+      paymentTypeId: previous.paymentTypeId,
+      forMonth: previous.forMonth,
+    );
+    if (schedule != null) {
+      final deltaPaid = _to2(amountPaid - previous.amountPaid);
+      var newSchedulePaid = _to2(schedule.paidAmount + deltaPaid);
+      if (newSchedulePaid < 0) newSchedulePaid = 0;
+      final newStatus = _deriveScheduleStatus(
+        baseAmount: schedule.amount,
+        paidAmount: newSchedulePaid,
+      );
+      await _repository.updatePaymentScheduleById(
+        id: schedule.id,
+        dueDate: schedule.dueDate,
+        amount: schedule.amount,
+        status: newStatus,
+        paidAmount: newSchedulePaid,
+        paymentTypeCode: previous.paymentTypeCode,
+        note: schedule.note,
+      );
+    }
+
+    final oldNet = _to2(previous.amountDue - previous.discountAmount + previous.fineAmount);
+    final oldExcess = _to2(previous.amountPaid - oldNet);
+    final newExcess = _to2(amountPaid - netDue);
+    final advanceDelta = _to2(newExcess - oldExcess);
+    if (advanceDelta != 0) {
+      final current = await _repository.getAdvanceBalance(
+        studentId: previous.studentId,
+        courseId: previous.courseId,
+      );
+      var next = _to2((current?.balance ?? 0) + advanceDelta);
+      if (next < 0) next = 0;
+      await _repository.upsertAdvanceBalance(
+        studentId: previous.studentId,
+        courseId: previous.courseId,
+        balance: next,
+      );
+    }
+
+    return updated;
+  }
+
+  /// Deletes a `payment_ledger` row and reverses schedule + advance effects from [recordPayment].
+  Future<void> deleteRecordedPayment(String ledgerId) async {
+    final ledger = await _repository.getPaymentLedgerById(ledgerId);
+    if (ledger == null) return;
+
+    final schedule = await _repository.getScheduleTarget(
+      studentId: ledger.studentId,
+      courseId: ledger.courseId,
+      paymentTypeId: ledger.paymentTypeId,
+      forMonth: ledger.forMonth,
+    );
+
+    final netDue = _to2(ledger.amountDue - ledger.discountAmount + ledger.fineAmount);
+    final excess = _to2(ledger.amountPaid - netDue);
+
+    if (schedule != null) {
+      var newSchedulePaid = _to2(schedule.paidAmount - ledger.amountPaid);
+      if (newSchedulePaid < 0) newSchedulePaid = 0;
+      final newStatus = _deriveScheduleStatus(
+        baseAmount: schedule.amount,
+        paidAmount: newSchedulePaid,
+      );
+      await _repository.updatePaymentScheduleById(
+        id: schedule.id,
+        dueDate: schedule.dueDate,
+        amount: schedule.amount,
+        status: newStatus,
+        paidAmount: newSchedulePaid,
+        paymentTypeCode: ledger.paymentTypeCode,
+        note: schedule.note,
+      );
+    }
+
+    if (excess > 0) {
+      final current = await _repository.getAdvanceBalance(
+        studentId: ledger.studentId,
+        courseId: ledger.courseId,
+      );
+      var next = _to2((current?.balance ?? 0) - excess);
+      if (next < 0) next = 0;
+      await _repository.upsertAdvanceBalance(
+        studentId: ledger.studentId,
+        courseId: ledger.courseId,
+        balance: next,
+      );
+    }
+
+    await _repository.deletePaymentLedgerById(ledgerId);
   }
 }
 

@@ -22,6 +22,7 @@ import '../../../../features/admin/widgets/admin_responsive_scaffold.dart';
 import '../../../../features/auth/providers/auth_provider.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../widgets/student_drawer.dart';
+import '../repositories/community_repository.dart';
 
 /// Community group chat with Supabase Realtime (`community_messages` stream).
 class CommunityChatScreen extends ConsumerStatefulWidget {
@@ -81,6 +82,7 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
   final _uuid = const Uuid();
 
   StreamSubscription<List<Map<String, dynamic>>>? _msgSub;
+  Timer? _pollTimer;
   List<Map<String, dynamic>> _messages = [];
   final Map<String, UserModel> _senders = {};
 
@@ -95,13 +97,20 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(CommunityRepository().markGroupSeen(widget.groupId));
     _loadGroupMeta();
     _subscribeMessages();
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _fetchMessages(),
+    );
   }
 
   @override
   void dispose() {
+    unawaited(CommunityRepository().markGroupSeen(widget.groupId));
     _msgSub?.cancel();
+    _pollTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -123,6 +132,17 @@ class _CommunityChatScreenState extends ConsumerState<CommunityChatScreen> {
       if (!mounted) return;
       setState(() => _messages = list);
       _ensureSendersLoaded(list);
+      if (list.isNotEmpty) {
+        final latest = DateTime.tryParse(list.first['created_at']?.toString() ?? '');
+        if (latest != null) {
+          unawaited(
+            CommunityRepository().markGroupSeen(
+              widget.groupId,
+              seenAt: latest.toUtc(),
+            ),
+          );
+        }
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.jumpTo(0);
@@ -822,33 +842,11 @@ class _ChatBubble extends StatelessWidget {
     final content = message['content']?.toString() ?? '';
     final fileUrl = message['file_url']?.toString();
     final isAdmin = sender?.role == UserRole.admin;
-
-    Color bubbleColor;
-    Alignment align;
-    if (isOwn) {
-      align = Alignment.centerRight;
-      if (isAdmin) {
-        bubbleColor = AppTheme.accent.withValues(alpha: 0.35);
-      } else {
-        bubbleColor = theme.colorScheme.primary.withValues(alpha: 0.9);
-      }
-    } else {
-      align = Alignment.centerLeft;
-      if (isAdmin) {
-        bubbleColor = AppTheme.accent.withValues(alpha: 0.25);
-      } else {
-        bubbleColor = theme.colorScheme.surfaceContainerHighest;
-      }
-    }
-
-    final Color fg;
-    if (isOwn && !isAdmin) {
-      fg = theme.colorScheme.onPrimary;
-    } else if (isOwn && isAdmin) {
-      fg = const Color(0xFF1A1204);
-    } else {
-      fg = theme.colorScheme.onSurface;
-    }
+    final align = isOwn ? Alignment.centerRight : Alignment.centerLeft;
+    final bubbleColor = isOwn
+        ? theme.colorScheme.primary.withValues(alpha: 0.15)
+        : theme.colorScheme.surfaceContainerHighest;
+    final fg = theme.colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -875,11 +873,7 @@ class _ChatBubble extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (sender != null && isAdmin) ...[
-                            Icon(
-                              Icons.workspace_premium_rounded,
-                              size: 16,
-                              color: AppTheme.accent.darken(0.15),
-                            ),
+                            Icon(Icons.workspace_premium_rounded, size: 16, color: AppTheme.accent.darken(0.15)),
                             const SizedBox(width: 4),
                           ],
                           Flexible(

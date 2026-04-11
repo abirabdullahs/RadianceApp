@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class StudentBottomShell extends StatelessWidget {
+import '../../../app/i18n/app_localizations.dart';
+import '../../notifications/providers/unread_notifications_provider.dart';
+import '../community/providers/community_unread_provider.dart';
+
+class StudentBottomShell extends ConsumerWidget {
   const StudentBottomShell({
     super.key,
     required this.location,
@@ -19,7 +24,16 @@ class StudentBottomShell extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final unreadNotif = ref.watch(unreadNotificationCountProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => 0,
+        );
+    final unreadChat = ref.watch(communityUnreadGroupsCountProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => 0,
+        );
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
@@ -48,15 +62,51 @@ class StudentBottomShell extends StatelessWidget {
               break;
           }
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.notifications_outlined),
-            selectedIcon: Icon(Icons.notifications),
-            label: 'Notification',
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home),
+            label: l10n.t('home'),
           ),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.menu), selectedIcon: Icon(Icons.menu), label: 'Menu'),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: unreadNotif > 0,
+              label: unreadNotif > 9
+                  ? const Text('9+', style: TextStyle(fontSize: 10))
+                  : Text('$unreadNotif', style: const TextStyle(fontSize: 10)),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: unreadNotif > 0,
+              label: unreadNotif > 9
+                  ? const Text('9+', style: TextStyle(fontSize: 10))
+                  : Text('$unreadNotif', style: const TextStyle(fontSize: 10)),
+              child: const Icon(Icons.notifications),
+            ),
+            label: l10n.t('notification'),
+          ),
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: unreadChat > 0,
+              label: unreadChat > 9
+                  ? const Text('9+', style: TextStyle(fontSize: 10))
+                  : Text('$unreadChat', style: const TextStyle(fontSize: 10)),
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: unreadChat > 0,
+              label: unreadChat > 9
+                  ? const Text('9+', style: TextStyle(fontSize: 10))
+                  : Text('$unreadChat', style: const TextStyle(fontSize: 10)),
+              child: const Icon(Icons.chat_bubble),
+            ),
+            label: l10n.t('chat'),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.menu),
+            selectedIcon: const Icon(Icons.menu),
+            label: l10n.t('menu'),
+          ),
         ],
       ),
     );

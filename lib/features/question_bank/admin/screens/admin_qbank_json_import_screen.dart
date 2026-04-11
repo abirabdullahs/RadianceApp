@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../features/admin/widgets/admin_responsive_scaffold.dart';
 import '../../repositories/qbank_repository.dart';
 import '../../services/qbank_json_importer.dart';
 
@@ -26,44 +27,48 @@ class _AdminQbankJsonImportScreenState extends State<AdminQbankJsonImportScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('JSON Import', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          FilledButton.icon(
-            onPressed: _busy ? null : _pickFile,
-            icon: const Icon(Icons.upload_file),
-            label: Text('JSON ফাইল নির্বাচন করুন', style: GoogleFonts.hindSiliguri()),
-          ),
-          if (_fileName != null) ...[
-            const SizedBox(height: 8),
-            Text('File: $_fileName', style: GoogleFonts.nunito()),
-          ],
-          const SizedBox(height: 16),
-          if (_result != null) ...[
-            _SummaryCard(result: _result!),
-            const SizedBox(height: 12),
-            if (_result!.errors.isNotEmpty) _ErrorsCard(errors: _result!.errors),
-            const SizedBox(height: 12),
-            _PreviewCard(result: _result!),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _busy || _result!.validRows.isEmpty ? null : _importValidRows,
-              icon: const Icon(Icons.cloud_upload_outlined),
-              label: Text(
-                '${_result!.validRows.length} টি প্রশ্ন Import করুন',
-                style: GoogleFonts.hindSiliguri(),
+    return AdminResponsiveScaffold(
+      title: Text('JSON Import', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 960),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              FilledButton.icon(
+                onPressed: _busy ? null : _pickFile,
+                icon: const Icon(Icons.upload_file),
+                label: Text('JSON ফাইল নির্বাচন করুন', style: GoogleFonts.hindSiliguri()),
               ),
-            ),
-          ],
-          if (_busy) ...[
-            const SizedBox(height: 12),
-            const Center(child: CircularProgressIndicator()),
-          ],
-        ],
+              if (_fileName != null) ...[
+                const SizedBox(height: 8),
+                Text('File: $_fileName', style: GoogleFonts.nunito()),
+              ],
+              const SizedBox(height: 16),
+              if (_result != null) ...[
+                _SummaryCard(result: _result!),
+                const SizedBox(height: 12),
+                if (_result!.errors.isNotEmpty) _ErrorsCard(errors: _result!.errors),
+                const SizedBox(height: 12),
+                _PreviewCard(result: _result!),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _busy || _result!.validRows.isEmpty ? null : _importValidRows,
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    '${_result!.validRows.length} টি প্রশ্ন Import করুন',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
+                ),
+              ],
+              if (_busy) ...[
+                const SizedBox(height: 12),
+                const Center(child: CircularProgressIndicator()),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

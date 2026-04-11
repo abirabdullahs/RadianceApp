@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../features/admin/widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/qbank_models.dart';
 import '../../widgets/mixed_content_renderer.dart';
 import '../../repositories/qbank_repository.dart';
@@ -138,37 +139,41 @@ class _AdminQbankQuestionEditorScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _isMcq ? (_isEdit ? 'MCQ সম্পাদনা' : 'নতুন MCQ') : (_isEdit ? 'CQ সম্পাদনা' : 'নতুন CQ'),
-          style: GoogleFonts.hindSiliguri(),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _showPreview,
-            icon: const Icon(Icons.visibility_outlined),
-            label: Text('Preview', style: GoogleFonts.hindSiliguri()),
-          ),
-        ],
+    return AdminResponsiveScaffold(
+      title: Text(
+        _isMcq ? (_isEdit ? 'MCQ সম্পাদনা' : 'নতুন MCQ') : (_isEdit ? 'CQ সম্পাদনা' : 'নতুন CQ'),
+        style: GoogleFonts.hindSiliguri(),
       ),
+      actions: [
+        TextButton.icon(
+          onPressed: _showPreview,
+          icon: const Icon(Icons.visibility_outlined),
+          label: Text('Preview', style: GoogleFonts.hindSiliguri()),
+        ),
+      ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Form(
               key: _form,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_isMcq) ..._mcqFields() else ..._cqFields(),
-                  const SizedBox(height: 8),
-                  _commonFields(),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _save,
-                    icon: const Icon(Icons.save),
-                    label: Text('সংরক্ষণ করুন', style: GoogleFonts.hindSiliguri()),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (_isMcq) ..._mcqFields() else ..._cqFields(),
+                      const SizedBox(height: 8),
+                      _commonFields(),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.save),
+                        label: Text('সংরক্ষণ করুন', style: GoogleFonts.hindSiliguri()),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
     );

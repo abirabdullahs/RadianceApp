@@ -28,7 +28,7 @@ class FcmService {
     'radiance_default',
     'Radiance',
     description: 'General notifications',
-    importance: Importance.defaultImportance,
+    importance: Importance.high,
   );
 
   /// Call after [initSupabase]. Safe to call when Firebase is not configured (no-ops).
@@ -91,8 +91,8 @@ class FcmService {
                 _androidChannel.id,
                 _androidChannel.name,
                 channelDescription: _androidChannel.description,
-                importance: Importance.defaultImportance,
-                priority: Priority.defaultPriority,
+                importance: Importance.high,
+                priority: Priority.high,
               ),
               iOS: const DarwinNotificationDetails(),
             ),

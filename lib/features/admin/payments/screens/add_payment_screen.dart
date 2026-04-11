@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
+import '../../../../core/student_id_display.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/discount_rule_model.dart';
@@ -60,6 +61,8 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   final List<_FeeItemState> _feeItems = [];
 
   PaymentModel? _existingPayment;
+  /// Set when editing a row from `payment_ledger` (current payment flow).
+  PaymentLedgerModel? _existingLedger;
   bool _loadingEdit = false;
 
   DateTime _billingMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -98,7 +101,8 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   Future<void> _prefillInitialStudent(String studentId) async {
     try {
       final repo = ref.read(studentRepositoryForPaymentsProvider);
-      final student = await repo.getStudentById(studentId);
+      final uid = await repo.resolveStudentUserId(studentId) ?? studentId;
+      final student = await repo.getStudentById(uid);
       if (!mounted) return;
       await _selectStudent(student);
     } catch (_) {
@@ -126,7 +130,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       if (!mounted) return;
       setState(() {
         _paymentTypes = list;
-        if (_feeItems.isEmpty && _existingPayment == null && _paymentTypes.isNotEmpty) {
+        if (_feeItems.isEmpty &&
+            _existingLedger == null &&
+            _existingPayment == null &&
+            _paymentTypes.isNotEmpty) {
           final firstType = _paymentTypes.first;
           final defaultAmt = _paymentSettings.defaultAmountForCode(
             firstType.code,
@@ -153,6 +160,48 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   Future<void> _loadPaymentForEdit(String id) async {
     setState(() => _loadingEdit = true);
     try {
+      final ledger = await ref.read(paymentRepositoryProvider).getPaymentLedgerById(id);
+      if (!mounted) return;
+      if (ledger != null) {
+        final studentRepo = ref.read(studentRepositoryForPaymentsProvider);
+        final courseRepo = ref.read(courseRepositoryProvider);
+        final student = await studentRepo.getStudentById(ledger.studentId);
+        final enrollments = await studentRepo.getStudentEnrollments(student.id);
+        final active = enrollments.where((e) => e.status == EnrollmentStatus.active).toList();
+        final courses = <CourseModel>[];
+        for (final e in active) {
+          try {
+            courses.add(await courseRepo.getCourseById(e.courseId));
+          } catch (_) {}
+        }
+        if (!courses.any((c) => c.id == ledger.courseId)) {
+          try {
+            courses.add(await courseRepo.getCourseById(ledger.courseId));
+          } catch (_) {}
+        }
+        if (!mounted) return;
+        final paid = ledger.paidAt ?? DateTime.now();
+        final billMonth = ledger.forMonth ?? DateTime(paid.year, paid.month, 1);
+        setState(() {
+          _existingLedger = ledger;
+          _existingPayment = null;
+          _student = student;
+          _studentQuery.text = student.fullNameBn;
+          _courseOptions = courses;
+          _selectedCourseId = ledger.courseId;
+          _billingMonth = billMonth;
+          _syncMonthDisplay();
+          _paymentDate = paid;
+          _syncPaidDateDisplay();
+          _subtotal.text = ledger.amountDue.toStringAsFixed(2);
+          _discount.text = ledger.discountAmount.toStringAsFixed(2);
+          _note.text = ledger.note ?? '';
+          _paymentMethod = PaymentMethod.fromJson(ledger.paymentMethod) ?? PaymentMethod.cash;
+          _loadingEdit = false;
+        });
+        return;
+      }
+
       final p = await ref.read(paymentRepositoryProvider).getPaymentById(id);
       if (!mounted) return;
       if (p == null) {
@@ -180,6 +229,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       }
       if (!mounted) return;
       setState(() {
+        _existingLedger = null;
         _existingPayment = p;
         _student = student;
         _studentQuery.text = student.fullNameBn;
@@ -286,7 +336,17 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   void _scheduleStudentSearch(String query) {
     _searchDebounce?.cancel();
     final q = query.trim();
-    if (q.length < 2) {
+    final digitsOnly = RegExp(r'^\d+$').hasMatch(q);
+    if (q.isEmpty) {
+      setState(() => _studentSuggestions = []);
+      return;
+    }
+    if (digitsOnly) {
+      if (q.length != 9) {
+        setState(() => _studentSuggestions = []);
+        return;
+      }
+    } else if (q.length < 2) {
       setState(() => _studentSuggestions = []);
       return;
     }
@@ -492,14 +552,50 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       );
       return;
     }
-    final isEdit = _existingPayment != null;
+    final isEdit = _existingLedger != null || _existingPayment != null;
 
     setState(() => _submitting = true);
     try {
       PaymentModel? saved;
       double notifyAmount = 0;
       String successVoucher = '';
-      if (isEdit) {
+      if (_existingLedger != null) {
+        final subtotal = _parseNum(_subtotal.text);
+        final discount = _parseNum(_discount.text);
+        final grand = double.parse((subtotal - discount).toStringAsFixed(2));
+        if (grand <= 0) {
+          throw Exception('চূড়ান্ত পরিমাণ ০ এর উপরে হতে হবে');
+        }
+        final updated = await ref.read(paymentServiceProvider).updateRecordedPayment(
+              previous: _existingLedger!,
+              amountDue: subtotal,
+              discountAmount: discount,
+              fineAmount: _existingLedger!.fineAmount,
+              amountPaid: grand,
+              paymentMethod: _paymentMethod.toJson(),
+              paidAt: _paymentDate,
+              note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+            );
+        notifyAmount = grand;
+        successVoucher = updated.voucherNo;
+        saved = PaymentModel(
+          id: updated.id,
+          voucherNo: updated.voucherNo,
+          studentId: updated.studentId,
+          courseId: updated.courseId,
+          forMonth: updated.forMonth ?? _billingMonth,
+          amount: updated.amountPaid,
+          subtotal: updated.amountDue,
+          discount: updated.discountAmount,
+          paymentMethod: PaymentMethod.fromJson(updated.paymentMethod),
+          status: updated.status == LedgerPaymentStatus.partial
+              ? PaymentStatus.partial
+              : PaymentStatus.paid,
+          note: updated.note,
+          paidAt: updated.paidAt,
+          createdBy: updated.createdBy,
+        );
+      } else if (_existingPayment != null) {
         final subtotal = _parseNum(_subtotal.text);
         final discount = _parseNum(_discount.text);
         final grand = double.parse((subtotal - discount).toStringAsFixed(2));
@@ -732,7 +828,9 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
 
     return AdminResponsiveScaffold(
       title: Text(
-        _existingPayment != null ? 'পেমেন্ট সম্পাদনা' : 'নতুন পেমেন্ট',
+        (_existingLedger != null || _existingPayment != null)
+            ? 'পেমেন্ট সম্পাদনা'
+            : 'নতুন পেমেন্ট',
         style: GoogleFonts.hindSiliguri(),
       ),
       body: Stack(
@@ -755,9 +853,12 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _studentQuery,
-                    enabled: !_submitting && !_loadingEdit && _existingPayment == null,
-                    decoration: _decoration('নাম বা ফোন দিয়ে খুঁজুন').copyWith(
-                      hintText: 'কমপক্ষে ২ অক্ষর',
+                    enabled: !_submitting &&
+                        !_loadingEdit &&
+                        _existingLedger == null &&
+                        _existingPayment == null,
+                    decoration: _decoration('নাম, ফোন বা শেষ ৯ ডিজিট').copyWith(
+                      hintText: 'নাম / ফোন (২+ অক্ষর) অথবা ৯ ডিজিট আইডি',
                       suffixIcon: _student != null
                           ? Icon(Icons.check_circle, color: theme.colorScheme.primary)
                           : null,
@@ -784,7 +885,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                   u.fullNameBn,
                                   style: GoogleFonts.hindSiliguri(),
                                 ),
-                                subtitle: Text(u.phone, style: GoogleFonts.nunito()),
+                                subtitle: Text(
+                                  '${displayStudentIdForUser(u)} · ${u.phone}',
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
                                 onTap: _submitting ? null : () => _selectStudent(u),
                               );
                             },
@@ -830,7 +934,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                             ),
                           )
                           .toList(),
-                      onChanged: (_submitting || _loadingEdit || _existingPayment != null)
+                      onChanged: (_submitting ||
+                              _loadingEdit ||
+                              _existingLedger != null ||
+                              _existingPayment != null)
                           ? null
                           : (c) {
                               setState(() {
@@ -843,7 +950,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                             },
                     ),
                   const SizedBox(height: 16),
-                  if (_existingPayment == null) ...[
+                  if (_existingLedger == null && _existingPayment == null) ...[
                     Text(
                       'ফি আইটেম (একসাথে একাধিক)',
                       style: GoogleFonts.hindSiliguri(
@@ -976,7 +1083,10 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     controller: _monthDisplay,
                     readOnly: true,
                     enabled: !_submitting && !_loadingEdit,
-                    onTap: (_submitting || _loadingEdit || _existingPayment != null)
+                    onTap: (_submitting ||
+                            _loadingEdit ||
+                            _existingLedger != null ||
+                            _existingPayment != null)
                         ? null
                         : _pickBillingMonth,
                     decoration: _decoration('বিলিং মাস').copyWith(
@@ -985,7 +1095,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     style: GoogleFonts.nunito(),
                   ),
                   const SizedBox(height: 16),
-                  if (_existingPayment != null) ...[
+                  if (_existingLedger != null || _existingPayment != null) ...[
                     TextFormField(
                       controller: _subtotal,
                       enabled: !_submitting,
@@ -1092,7 +1202,9 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                       backgroundColor: context.themePrimary,
                     ),
                     child: Text(
-                      _existingPayment != null ? 'হালনাগাদ করুন' : 'সংরক্ষণ করুন',
+                      (_existingLedger != null || _existingPayment != null)
+                          ? 'হালনাগাদ করুন'
+                          : 'সংরক্ষণ করুন',
                       style: GoogleFonts.hindSiliguri(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,

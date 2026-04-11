@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/student_id_display.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
+import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_model.dart';
 import '../../../../shared/models/payment_schedule_model.dart';
+import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../../courses/repositories/course_repository.dart';
 import '../../students/repositories/student_repository.dart';
@@ -126,8 +132,12 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
       );
     } catch (e) {
       if (!mounted) return;
+      var msg = '$e';
+      if (e is PostgrestException) {
+        msg = e.message;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text(msg, style: GoogleFonts.hindSiliguri())),
       );
     }
   }
@@ -391,6 +401,8 @@ class _PaymentsTab extends ConsumerStatefulWidget {
 
 class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
   final _voucherSearch = TextEditingController();
+  final Map<String, String> _displayStudentIds = <String, String>{};
+  String _displayIdsKey = '';
 
   @override
   void dispose() {
@@ -440,6 +452,162 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     }
   }
 
+  bool _paymentMatchesQuery(PaymentLedgerModel p, String q) {
+    if (q.isEmpty) return true;
+    final v = q.toLowerCase().trim();
+    final normQ = v.replaceAll(RegExp(r'\s'), '');
+    final normStudent = p.studentId.toLowerCase().replaceAll(RegExp(r'\s'), '');
+    final display = _displayStudentIds[p.studentId] ?? '';
+    final normDisplay = display.toLowerCase().replaceAll(RegExp(r'\s'), '');
+    if (p.voucherNo.toLowerCase().contains(v)) return true;
+    if (display.isNotEmpty && display.toLowerCase().contains(v)) return true;
+    if (normQ.isNotEmpty && normDisplay.contains(normQ)) return true;
+    if (p.studentId.toLowerCase().contains(v)) return true;
+    if (normQ.isNotEmpty && normStudent.contains(normQ)) return true;
+    return false;
+  }
+
+  Future<void> _loadDisplayStudentIds(List<PaymentLedgerModel> list) async {
+    final ids = list.map((e) => e.studentId).toSet().toList()..sort();
+    final key = ids.join(',');
+    if (key == _displayIdsKey) return;
+    _displayIdsKey = key;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _displayStudentIds.clear());
+      return;
+    }
+    try {
+      final map =
+          await ref.read(studentRepositoryForPaymentsProvider).getDisplayStudentIdsForUserIds(ids);
+      if (!mounted) return;
+      setState(() {
+        _displayStudentIds
+          ..clear()
+          ..addAll(map);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _showPaymentDetail(PaymentLedgerModel p) async {
+    final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
+    final studentRepo = ref.read(studentRepositoryForPaymentsProvider);
+    final courseRepo = ref.read(courseRepositoryProvider);
+    UserModel? student;
+    CourseModel? course;
+    try {
+      student = await studentRepo.getStudentById(p.studentId);
+    } catch (_) {}
+    try {
+      course = await courseRepo.getCourseById(p.courseId);
+    } catch (_) {}
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          p.voucherNo.isEmpty ? 'পেমেন্ট' : p.voucherNo,
+          style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'শিক্ষার্থী: ${student?.fullNameBn ?? '—'}',
+                style: GoogleFonts.hindSiliguri(),
+              ),
+              const SizedBox(height: 6),
+              SelectableText(
+                'Student ID: ${student != null ? displayStudentIdForUser(student) : '—'}',
+                style: GoogleFonts.nunito(),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'কোর্স: ${course?.name ?? p.courseId}',
+                style: GoogleFonts.hindSiliguri(),
+              ),
+              const SizedBox(height: 6),
+              Text('ফি ধরন: ${p.paymentTypeCode}', style: GoogleFonts.hindSiliguri()),
+              const SizedBox(height: 6),
+              Text(
+                'বিলিং মাস: ${p.forMonth == null ? '—' : DateFormat.yMMMM().format(p.forMonth!)}',
+                style: GoogleFonts.hindSiliguri(),
+              ),
+              const SizedBox(height: 6),
+              Text('পরিশোধিত: ${fmt.format(p.amountPaid)}', style: GoogleFonts.nunito()),
+              Text(
+                'নির্ধারিত / ছাড়: ${fmt.format(p.amountDue)} / ${fmt.format(p.discountAmount)}',
+                style: GoogleFonts.nunito(fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              Text('স্ট্যাটাস: ${p.status.name}', style: GoogleFonts.hindSiliguri()),
+              if (p.note != null && p.note!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('নোট: ${p.note}', style: GoogleFonts.hindSiliguri()),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('বন্ধ', style: GoogleFonts.hindSiliguri()),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _printPayment(p);
+            },
+            child: Text('প্রিন্ট', style: GoogleFonts.hindSiliguri()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(PaymentLedgerModel p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'মুছে ফেলবেন?',
+          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'ভাউচার ${p.voucherNo.isEmpty ? p.id.substring(0, 8) : p.voucherNo} — এই লেনদেন মুছে ফেলা হবে।',
+          style: GoogleFonts.hindSiliguri(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('না', style: GoogleFonts.hindSiliguri()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('হ্যাঁ, মুছুন', style: GoogleFonts.hindSiliguri()),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(paymentServiceProvider).deleteRecordedPayment(p.id);
+      ref.invalidate(filteredPaymentsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(filteredPaymentsProvider);
@@ -447,7 +615,11 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     final q = _voucherSearch.text.trim().toLowerCase();
     return async.when(
       data: (list) {
-        final filtered = q.isEmpty ? list : list.where((p) => p.voucherNo.toLowerCase().contains(q)).toList();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_loadDisplayStudentIds(list));
+        });
+        final filtered =
+            q.isEmpty ? list : list.where((p) => _paymentMatchesQuery(p, q)).toList();
         if (list.isEmpty) {
           return Center(
             child: Text('কোনো পেমেন্ট নেই', style: GoogleFonts.hindSiliguri()),
@@ -460,8 +632,8 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
               child: TextField(
                 controller: _voucherSearch,
                 decoration: InputDecoration(
-                  labelText: 'ভাউচার নম্বর দিয়ে খুঁজুন',
-                  hintText: 'যেমন RCC-2026-0001',
+                  labelText: 'ভাউচার বা স্টুডেন্ট আইডি',
+                  hintText: 'ভাউচার নম্বর অথবা শেষ ৯ ডিজিট',
                   prefixIcon: const Icon(Icons.search),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppTheme.cardRadius),
@@ -497,24 +669,45 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                         itemBuilder: (context, i) {
                           final p = filtered[i];
                           return ListTile(
+                            onTap: () => _showPaymentDetail(p),
                             title: Text(
-                              p.voucherNo,
+                              p.voucherNo.isEmpty ? '(ভাউচার লোড হচ্ছে)' : p.voucherNo,
                               style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
-                              '${p.paymentTypeCode} · ${fmt.format(p.amountPaid)} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
+                              '${_displayStudentIds[p.studentId] ?? '…'} · ${p.paymentTypeCode} · ${fmt.format(p.amountPaid)} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
                               style: GoogleFonts.nunito(fontSize: 12),
                             ),
                             trailing: PopupMenuButton<String>(
                               onSelected: (v) async {
                                 if (v == 'print') {
                                   await _printPayment(p);
+                                } else if (v == 'edit') {
+                                  if (context.mounted) {
+                                    await context.push('/admin/payments/edit/${p.id}');
+                                    if (context.mounted) {
+                                      ref.invalidate(filteredPaymentsProvider);
+                                    }
+                                  }
+                                } else if (v == 'delete') {
+                                  await _confirmDelete(p);
                                 }
                               },
                               itemBuilder: (ctx) => [
                                 PopupMenuItem(
+                                  value: 'edit',
+                                  child: Text('সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+                                ),
+                                PopupMenuItem(
                                   value: 'print',
                                   child: Text('প্রিন্ট / PDF', style: GoogleFonts.hindSiliguri()),
+                                ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text(
+                                    'মুছুন',
+                                    style: GoogleFonts.hindSiliguri(color: Theme.of(ctx).colorScheme.error),
+                                  ),
                                 ),
                               ],
                             ),

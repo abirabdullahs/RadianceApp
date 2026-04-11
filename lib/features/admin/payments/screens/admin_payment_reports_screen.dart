@@ -134,7 +134,8 @@ class _AdminPaymentReportsScreenState
                         child: TextField(
                           controller: _studentIdCtrl,
                           decoration: InputDecoration(
-                            labelText: 'Student ID (UUID)',
+                            labelText: 'স্টুডেন্ট আইডি (শেষ ৯ ডিজিট বা RCC…)',
+                            hintText: 'যেমন ১২৩৪৫৬৭৮৯',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.cardRadius)),
                           ),
                           onChanged: (_) => setState(() {}),

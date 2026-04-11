@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants.dart';
+import '../../../../core/student_id_display.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/enrollment_model.dart';
 import '../../../../shared/models/payment_model.dart';
@@ -68,6 +69,54 @@ class StudentRepository {
       throw StateError('Student not found: $id');
     }
     return UserModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  /// Resolves `users.id` from either auth UUID, `RCC#########`, or raw 9/11-digit phone digits.
+  Future<String?> resolveStudentUserId(String input) async {
+    final t = input.trim();
+    if (t.isEmpty) return null;
+    if (looksLikeUuid(t)) {
+      final row = await _client
+          .from(kTableUsers)
+          .select('id')
+          .eq('id', t)
+          .eq('role', UserRole.student.toJson())
+          .maybeSingle();
+      return row == null ? null : t;
+    }
+    final canonical = canonicalRccStudentIdFromInput(t);
+    if (canonical == null) return null;
+    final row = await _client
+        .from(kTableUsers)
+        .select('id')
+        .eq('student_id', canonical)
+        .eq('role', UserRole.student.toJson())
+        .maybeSingle();
+    return row == null ? null : row['id'] as String;
+  }
+
+  /// Batch map [userIds] → display student id (`RCC`+last9) for list/search UI.
+  Future<Map<String, String>> getDisplayStudentIdsForUserIds(Iterable<String> userIds) async {
+    final ids = userIds.toSet().toList();
+    if (ids.isEmpty) return {};
+    final rows = await _client
+        .from(kTableUsers)
+        .select('id, phone, student_id')
+        .inFilter('id', ids);
+    final out = <String, String>{};
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final id = m['id'] as String?;
+      if (id == null) continue;
+      final phone = m['phone'] as String? ?? '';
+      final sid = m['student_id'] as String?;
+      if (sid != null && sid.isNotEmpty && !looksLikeUuid(sid)) {
+        out[id] = sid;
+      } else {
+        out[id] = canonicalRccStudentIdFromInput(phone) ?? '—';
+      }
+    }
+    return out;
   }
 
   /// Creates Auth user + `public.users` via Edge Function `create-student` (service role).

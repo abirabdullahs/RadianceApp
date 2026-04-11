@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/widgets/app_bar_drawer_leading.dart';
 import '../../../app/widgets/theme_picker_sheet.dart';
 import '../../auth/providers/auth_provider.dart' show currentUserProvider, signInProvider;
@@ -49,6 +50,7 @@ class StudentMenuContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final userAsync = ref.watch(currentUserProvider);
 
     return ListView(
@@ -61,7 +63,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.dashboard_outlined),
-          title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('dashboard'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student');
@@ -69,7 +71,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.school_outlined),
-          title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('my_courses'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/courses');
@@ -77,7 +79,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.quiz_outlined),
-          title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('exams'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/exams');
@@ -85,7 +87,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.emoji_events_outlined),
-          title: Text('ফলাফল', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('results'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/results');
@@ -93,7 +95,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.payments_outlined),
-          title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('payments'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/payments');
@@ -101,7 +103,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.event_available_outlined),
-          title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('attendance'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/attendance');
@@ -109,7 +111,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.groups_outlined),
-          title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('group_chat'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/community');
@@ -117,7 +119,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.help_outline),
-          title: Text('সন্দেহ সমাধান', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('doubt_solve'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/doubts');
@@ -125,7 +127,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.library_books_outlined),
-          title: Text('প্রশ্ন ব্যাংক', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('question_bank'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/qbank');
@@ -133,7 +135,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.person_outline),
-          title: Text('প্রোফাইল সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('edit_profile'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/profile/edit');
@@ -141,7 +143,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.settings_outlined),
-          title: Text('সেটিংস', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('settings'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             context.go('/student/settings');
@@ -149,7 +151,7 @@ class StudentMenuContent extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.palette_outlined),
-          title: Text('থিম ও রঙ', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('theme_and_colors'), style: GoogleFonts.hindSiliguri()),
           onTap: () {
             _closeIfNeeded(context);
             showThemePickerSheet(context, ref);
@@ -159,7 +161,7 @@ class StudentMenuContent extends ConsumerWidget {
         ListTile(
           leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
           title: Text(
-            'লগআউট',
+            l10n.t('logout'),
             style: GoogleFonts.hindSiliguri(
               color: Theme.of(context).colorScheme.error,
               fontWeight: FontWeight.w600,
@@ -209,7 +211,7 @@ class _StudentDrawerHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = user?.fullNameBn.trim().isNotEmpty == true
         ? user!.fullNameBn.trim()
-        : 'শিক্ষার্থী';
+        : AppLocalizations.of(context).t('student');
     final idLabel = user?.studentId?.trim().isNotEmpty == true
         ? user!.studentId!.trim()
         : (user?.phone ?? '—');
@@ -231,7 +233,7 @@ class _StudentDrawerHeader extends StatelessWidget {
             ),
           ),
           Text(
-            'শিক্ষার্থী',
+            AppLocalizations.of(context).t('student'),
             style: GoogleFonts.hindSiliguri(
               color: Colors.white70,
               fontSize: 13,
@@ -260,7 +262,7 @@ class _StudentDrawerHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'আইডি: $idLabel',
+                      '${AppLocalizations.of(context).t('id_prefix')}: $idLabel',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.nunito(

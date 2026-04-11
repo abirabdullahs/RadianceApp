@@ -47,14 +47,20 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   List<Map<String, dynamic>> _messages = [];
   final Map<String, UserModel> _senders = {};
   StreamSubscription<List<Map<String, dynamic>>>? _sub;
+  Timer? _pollTimer;
   bool _loading = true;
   bool _sending = false;
   bool _uploading = false;
+  int _lastMessageCount = 0;
 
   @override
   void initState() {
     super.initState();
     _bootstrap();
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _refetchMessages(),
+    );
   }
 
   Future<void> _bootstrap() async {
@@ -97,9 +103,15 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
         unawaited(_refetchMessages());
         return;
       }
-      setState(() => _messages = list);
+      final shouldAutoScroll = list.length >= _lastMessageCount;
+      setState(() {
+        _messages = list;
+        _lastMessageCount = list.length;
+      });
       _loadSenders(list);
-      _scrollToBottom();
+      if (shouldAutoScroll) {
+        _scrollToBottom();
+      }
     });
   }
 
@@ -107,10 +119,18 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     try {
       final rows = await _repo.listMessages(widget.doubtId);
       if (!mounted) return;
-      setState(() => _messages = rows);
+      final shouldAutoScroll = rows.length > _lastMessageCount;
+      setState(() {
+        _messages = rows;
+        _lastMessageCount = rows.length;
+      });
       await _loadSenders(rows);
-      _scrollToBottom();
-    } catch (_) {}
+      if (shouldAutoScroll) {
+        _scrollToBottom();
+      }
+    } catch (e) {
+      debugPrint('Doubt polling failed: $e');
+    }
   }
 
   void _scrollToBottom() {
@@ -132,6 +152,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   @override
   void dispose() {
     _sub?.cancel();
+    _pollTimer?.cancel();
     _text.dispose();
     _scroll.dispose();
     super.dispose();
@@ -670,43 +691,49 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                   ],
                 ),
               ),
-          if (uid != null)
+              if (uid != null)
             SafeArea(
               child: Material(
                 elevation: 4,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.attach_file),
-                        onPressed: _uploading ? null : () => _attachments(uid),
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _text,
-                          minLines: 1,
-                          maxLines: 4,
-                          decoration: InputDecoration(
-                            hintText: 'মেসেজ…',
-                            hintStyle: GoogleFonts.hindSiliguri(),
-                            border: InputBorder.none,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.attach_file),
+                      onPressed: _uploading ? null : () => _attachments(uid),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _text,
+                        minLines: 1,
+                        maxLines: 4,
+                        enabled: !_sending && !_uploading,
+                        decoration: InputDecoration(
+                          hintText: 'মেসেজ…',
+                          hintStyle: GoogleFonts.hindSiliguri(),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 12,
                           ),
-                          style: GoogleFonts.hindSiliguri(),
                         ),
+                        style: GoogleFonts.hindSiliguri(),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      IconButton.filled(
-                        onPressed: _sending ? null : _sendText,
-                        icon: _sending
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.send),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton.filled(
+                      onPressed: (_sending || _uploading || _text.text.trim().isEmpty)
+                          ? null
+                          : _sendText,
+                      icon: _sending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send),
+                    ),
+                  ],
                 ),
               ),
             ),
