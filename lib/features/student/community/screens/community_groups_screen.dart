@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../app/i18n/app_localizations.dart';
 import '../../../../app/widgets/notification_app_bar_action.dart';
 import '../../widgets/student_drawer.dart';
 import '../repositories/community_repository.dart';
@@ -31,13 +32,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('গ্রুপ চ্যাট', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('group_chat'), style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       body: RefreshIndicator(
@@ -54,7 +56,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('লোড করা যায়নি: ${snap.error}'),
+                    child: Text(
+                      '${l10n.t('load_failed')}: ${snap.error}',
+                      style: GoogleFonts.hindSiliguri(),
+                    ),
                   ),
                 ],
               );
@@ -68,7 +73,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Center(
                       child: Text(
-                        'সক্রিয় কোর্সে নথিভুক্ত নন বা কোর্স চ্যাট এখনো তৈরি হয়নি।\nকোর্সে ভর্তি হলে গ্রুপে স্বয়ংক্রিয় সদস্য হবেন।',
+                        l10n.t('community_empty_hint'),
                         style: GoogleFonts.hindSiliguri(),
                         textAlign: TextAlign.center,
                       ),
@@ -82,7 +87,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
               itemBuilder: (context, i) {
                 final g = groups[i];
                 final id = g['id'] as String;
-                final name = g['name'] as String? ?? 'গ্রুপ';
+                final name = g['name'] as String? ?? l10n.t('group_fallback_name');
                 final unseen = g['has_unseen'] == true;
                 return Material(
                   color: unseen
@@ -97,7 +102,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     ),
                     subtitle: unseen
                         ? Text(
-                            'নতুন মেসেজ আছে',
+                            l10n.t('community_new_messages'),
                             style: GoogleFonts.hindSiliguri(fontSize: 12),
                           )
                         : null,

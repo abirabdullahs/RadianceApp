@@ -196,19 +196,38 @@ class PaymentRepository {
     return PaymentModel.fromJson(Map<String, dynamic>.from(row));
   }
 
+  /// Sum of [remaining_amount] for rows still owing (pending / partial / overdue).
+  Future<double> sumOpenScheduleRemaining() async {
+    final rows = await _client
+        .from(kTablePaymentSchedule)
+        .select('remaining_amount')
+        .inFilter('status', ['pending', 'partial', 'overdue']);
+    var t = 0.0;
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      t += _parseAmount(m['remaining_amount']);
+    }
+    return double.parse(t.toStringAsFixed(2));
+  }
+
   /// Last six calendar months (oldest → newest), each with total collected [amount] by `paid_at`.
   ///
   /// Map keys: `month` (`yyyy-MM`), `label` (short English, e.g. `Nov 2025`), `amount` ([double]).
-  Future<List<Map<String, dynamic>>> getMonthlyRevenue() async {
+  /// Optional [courseId] filters ledger rows to that course.
+  Future<List<Map<String, dynamic>>> getMonthlyRevenue({String? courseId}) async {
     final now = DateTime.now();
     final rangeStart = DateTime(now.year, now.month - 5, 1);
     final rangeEnd = DateTime(now.year, now.month + 1, 1);
 
-    final rows = await _client
+    var q = _client
         .from(kTablePaymentLedger)
         .select('amount_paid, paid_at')
         .gte('paid_at', rangeStart.toUtc().toIso8601String())
         .lt('paid_at', rangeEnd.toUtc().toIso8601String());
+    if (courseId != null && courseId.isNotEmpty) {
+      q = q.eq('course_id', courseId);
+    }
+    final rows = await q;
 
     final buckets = <String, double>{};
     final labels = <String, String>{};

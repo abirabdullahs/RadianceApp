@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../repositories/doubt_repository.dart';
 import '../../student/widgets/student_drawer.dart';
@@ -56,7 +57,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ব্যর্থ: $e', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text('${AppLocalizations.of(context).t('failed')}: $e', style: GoogleFonts.hindSiliguri())),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -65,6 +66,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       drawer: const StudentDrawer(),
@@ -72,7 +74,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('নতুন সন্দেহ', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+        title: Text(l10n.t('doubt_new_short'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: const [AppBarDrawerAction()],
       ),
       body: Stack(
@@ -83,7 +85,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 Text(
-                  'সমস্যা বর্ণনা করুন',
+                  l10n.t('doubt_form_section_desc'),
                   style: GoogleFonts.hindSiliguri(
                     fontWeight: FontWeight.w700,
                     color: context.themePrimary,
@@ -94,7 +96,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                   controller: _subject,
                   enabled: !_submitting,
                   decoration: InputDecoration(
-                    labelText: 'বিষয় (ঐচ্ছিক)',
+                    labelText: l10n.t('doubt_field_subject_optional'),
                     labelStyle: GoogleFonts.hindSiliguri(),
                     border: const OutlineInputBorder(),
                   ),
@@ -105,7 +107,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                   controller: _chapter,
                   enabled: !_submitting,
                   decoration: InputDecoration(
-                    labelText: 'অধ্যায় (ঐচ্ছিক)',
+                    labelText: l10n.t('doubt_field_chapter_optional'),
                     labelStyle: GoogleFonts.hindSiliguri(),
                     border: const OutlineInputBorder(),
                   ),
@@ -116,13 +118,13 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                   controller: _title,
                   enabled: !_submitting,
                   decoration: InputDecoration(
-                    labelText: 'শিরোনাম *',
+                    labelText: l10n.t('doubt_field_title_required'),
                     labelStyle: GoogleFonts.hindSiliguri(),
                     border: const OutlineInputBorder(),
                   ),
                   style: GoogleFonts.hindSiliguri(),
                   validator: (v) {
-                    if (v == null || v.trim().length < 5) return 'শিরোনাম লিখুন';
+                    if (v == null || v.trim().length < 5) return l10n.t('doubt_validate_title_short');
                     return null;
                   },
                 ),
@@ -133,27 +135,27 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                   minLines: 5,
                   maxLines: 12,
                   decoration: InputDecoration(
-                    labelText: 'বিবরণ *',
+                    labelText: l10n.t('doubt_field_desc_required'),
                     labelStyle: GoogleFonts.hindSiliguri(),
                     alignLabelWithHint: true,
                     border: const OutlineInputBorder(),
                   ),
                   style: GoogleFonts.hindSiliguri(),
                   validator: (v) {
-                    if (v == null || v.trim().length < 8) return 'কমপক্ষে কয়েকটি বাক্য লিখুন';
+                    if (v == null || v.trim().length < 8) return l10n.t('doubt_validate_desc_short');
                     return null;
                   },
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'ছবি (ঐচ্ছিক)',
+                  l10n.t('doubt_image_optional'),
                   style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
                   onPressed: _submitting ? null : _pickImage,
                   icon: const Icon(Icons.image_outlined),
-                  label: Text(_image == null ? 'ছবি যোগ করুন' : 'ছবি বদলান', style: GoogleFonts.hindSiliguri()),
+                  label: Text(_image == null ? l10n.t('doubt_add_image') : l10n.t('doubt_change_image'), style: GoogleFonts.hindSiliguri()),
                 ),
                 if (_image != null)
                   Padding(
@@ -169,7 +171,7 @@ class _StudentNewDoubtScreenState extends State<StudentNewDoubtScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: Text(
-                    'জমা দিন',
+                    l10n.t('doubt_submit'),
                     style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                   ),
                 ),

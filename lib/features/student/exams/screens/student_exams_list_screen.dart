@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/i18n/app_localizations.dart';
 import '../../../../shared/models/exam_model.dart';
 import '../../widgets/student_drawer.dart';
 import '../repositories/student_exam_repository.dart';
@@ -19,6 +20,7 @@ class StudentExamsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(_studentExamsProvider);
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       drawer: const StudentDrawer(),
@@ -26,14 +28,14 @@ class StudentExamsScreen extends ConsumerWidget {
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('পরীক্ষা', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('exams'), style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction()],
       ),
       body: async.when(
         data: (exams) {
           if (exams.isEmpty) {
             return Center(
-              child: Text('কোনো পরীক্ষা নেই', style: GoogleFonts.hindSiliguri()),
+              child: Text(l10n.t('no_exams'), style: GoogleFonts.hindSiliguri()),
             );
           }
           return RefreshIndicator(
@@ -64,7 +66,7 @@ class StudentExamsScreen extends ConsumerWidget {
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
-                                'Venue: ${e.venue}',
+                                '${l10n.t('venue_prefix')}: ${e.venue}',
                                 style: GoogleFonts.nunito(fontSize: 12),
                               ),
                             ),
@@ -85,7 +87,7 @@ class StudentExamsScreen extends ConsumerWidget {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  _scheduleText(e),
+                                  _scheduleText(e, l10n),
                                   style: GoogleFonts.hindSiliguri(fontSize: 13),
                                 ),
                               ),
@@ -100,7 +102,7 @@ class StudentExamsScreen extends ConsumerWidget {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'অফলাইন পরীক্ষা: ${_scheduleText(e)}',
+                              '${l10n.t('offline_exam_prefix')}: ${_scheduleText(e, l10n)}',
                               style: GoogleFonts.hindSiliguri(),
                             ),
                           ),
@@ -116,16 +118,25 @@ class StudentExamsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              '${l10n.t('load_failed')}: $e',
+              style: GoogleFonts.hindSiliguri(),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  String _scheduleText(ExamModel exam) {
+  String _scheduleText(ExamModel exam, AppLocalizations l10n) {
     final start = exam.startTime;
     final end = exam.endTime;
     final f = DateFormat('dd MMM yyyy, hh:mm a');
-    if (start == null && end == null) return 'সময়সূচী পরে জানানো হবে';
+    if (start == null && end == null) return l10n.t('schedule_tbd');
     if (start != null && end != null) {
       return '${f.format(start.toLocal())} - ${f.format(end.toLocal())}';
     }

@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/doubt_thread_model.dart';
 import '../../../shared/models/user_model.dart';
@@ -202,6 +203,19 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     );
   }
 
+  String _statusLabel(AppLocalizations l10n, DoubtStatus s) {
+    switch (s) {
+      case DoubtStatus.open:
+        return l10n.t('doubt_status_open');
+      case DoubtStatus.inProgress:
+        return l10n.t('doubt_status_in_progress');
+      case DoubtStatus.meetingScheduled:
+        return l10n.t('doubt_status_meeting');
+      case DoubtStatus.solved:
+        return l10n.t('doubt_status_solved');
+    }
+  }
+
   Future<void> _sendText() async {
     final uid = supabaseClient.auth.currentUser?.id;
     if (uid == null || _sending) return;
@@ -241,8 +255,9 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
       );
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('আপলোড ব্যর্থ: $e', style: GoogleFonts.hindSiliguri())),
+          SnackBar(content: Text('${l10n.t('upload_failed')}: $e', style: GoogleFonts.hindSiliguri())),
         );
       }
     } finally {
@@ -295,6 +310,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   }
 
   void _attachments(String uid) {
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -304,7 +320,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: Text('ছবি', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('attachment_image'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickImage();
@@ -312,7 +328,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.audiotrack_outlined),
-              title: Text('অডিও / ভয়েস ফাইল', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('attachment_audio'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickAudio();
@@ -320,7 +336,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.insert_drive_file_outlined),
-              title: Text('ফাইল', style: GoogleFonts.hindSiliguri()),
+              title: Text(l10n.t('attachment_file'), style: GoogleFonts.hindSiliguri()),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickFile();
@@ -333,17 +349,18 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   }
 
   Future<void> _markSolved() async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Solved নিশ্চিত করবেন?', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+        title: Text(l10n.t('doubt_mark_solved_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
         content: Text(
-          'এই doubt টি সমাধান হিসেবে চিহ্নিত হবে এবং মুছে যাবে।',
+          l10n.t('doubt_mark_solved_body'),
           style: GoogleFonts.hindSiliguri(),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('বাতিল', style: GoogleFonts.hindSiliguri())),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('হ্যাঁ, Solved', style: GoogleFonts.hindSiliguri())),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.t('cancel'), style: GoogleFonts.hindSiliguri())),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.t('doubt_mark_solved_confirm'), style: GoogleFonts.hindSiliguri())),
         ],
       ),
     );
@@ -356,12 +373,12 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           icon: const Icon(Icons.celebration, color: Colors.green),
-          title: Text('✅ Doubt Solved!', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
-          content: Text('চমৎকার! থ্রেডটি সরানো হয়েছে।', style: GoogleFonts.hindSiliguri()),
+          title: Text(l10n.t('doubt_solved_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+          content: Text(l10n.t('doubt_solved_body'), style: GoogleFonts.hindSiliguri()),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
+              child: Text(l10n.t('ok'), style: GoogleFonts.hindSiliguri()),
             ),
           ],
         ),
@@ -378,6 +395,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   bool get _isStaff => widget.shell == DoubtChatShell.admin || widget.shell == DoubtChatShell.teacher;
 
   Future<void> _scheduleMeeting() async {
+    final l10n = AppLocalizations.of(context);
     final link = TextEditingController();
     final note = TextEditingController();
     DateTime? selected;
@@ -385,7 +403,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text('Meeting Schedule', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+          title: Text(l10n.t('doubt_meeting_schedule_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -395,7 +413,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(
                     selected == null
-                        ? 'তারিখ/সময় বাছুন'
+                        ? l10n.t('doubt_pick_date_time')
                         : DateFormat('dd MMM yyyy, hh:mm a').format(selected!),
                     style: GoogleFonts.hindSiliguri(),
                   ),
@@ -418,20 +436,20 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                 ),
                 TextField(
                   controller: link,
-                  decoration: InputDecoration(labelText: 'Meeting link', labelStyle: GoogleFonts.hindSiliguri()),
+                  decoration: InputDecoration(labelText: l10n.t('doubt_meeting_link_label'), labelStyle: GoogleFonts.hindSiliguri()),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: note,
                   maxLines: 2,
-                  decoration: InputDecoration(labelText: 'নোট (ঐচ্ছিক)', labelStyle: GoogleFonts.hindSiliguri()),
+                  decoration: InputDecoration(labelText: l10n.t('doubt_note_optional'), labelStyle: GoogleFonts.hindSiliguri()),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('বাতিল', style: GoogleFonts.hindSiliguri())),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Schedule', style: GoogleFonts.hindSiliguri())),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.t('cancel'), style: GoogleFonts.hindSiliguri())),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.t('doubt_schedule_action'), style: GoogleFonts.hindSiliguri())),
           ],
         ),
       ),
@@ -440,7 +458,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
     if (selected == null || link.text.trim().isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('তারিখ/সময় এবং লিংক দিন', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text(l10n.t('doubt_meeting_need_datetime_link'), style: GoogleFonts.hindSiliguri())),
       );
       return;
     }
@@ -463,17 +481,18 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
   }
 
   Future<void> _purge() async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('চ্যাট মুছবেন?', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+        title: Text(l10n.t('doubt_purge_chat_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
         content: Text(
-          'সব মেসেজ সার্ভার থেকে মুছে যাবে। আপনি কি নিশ্চিত?',
+          l10n.t('doubt_purge_all_body'),
           style: GoogleFonts.hindSiliguri(),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('না', style: GoogleFonts.hindSiliguri())),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text('হ্যাঁ', style: GoogleFonts.hindSiliguri())),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.t('common_no'), style: GoogleFonts.hindSiliguri())),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.t('common_yes'), style: GoogleFonts.hindSiliguri())),
         ],
       ),
     );
@@ -483,7 +502,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
       if (!mounted) return;
       setState(() => _messages = []);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('মেসেজ মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text(l10n.t('doubt_messages_deleted'), style: GoogleFonts.hindSiliguri())),
       );
     } catch (e) {
       if (mounted) {
@@ -496,25 +515,26 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final uid = supabaseClient.auth.currentUser?.id;
     final scheme = Theme.of(context).colorScheme;
 
     if (_loading) {
       return _chatShell(
-        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('chat'), style: GoogleFonts.hindSiliguri()),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_thread == null) {
       return _chatShell(
-        title: Text('চ্যাট', style: GoogleFonts.hindSiliguri()),
-        body: const Center(child: Text('পাওয়া যায়নি')),
+        title: Text(l10n.t('chat'), style: GoogleFonts.hindSiliguri()),
+        body: Center(child: Text(l10n.t('not_found'), style: GoogleFonts.hindSiliguri())),
       );
     }
 
     final t = _thread!;
-    final studentName = _senders[t.studentId]?.fullNameBn ?? 'শিক্ষার্থী';
+    final studentName = _senders[t.studentId]?.fullNameBn ?? l10n.t('student_name_fallback');
 
     final maxBodyW = min(MediaQuery.sizeOf(context).width, 720.0);
 
@@ -524,22 +544,11 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            widget.shell != DoubtChatShell.student ? studentName : 'সন্দেহ চ্যাট',
+            widget.shell != DoubtChatShell.student ? studentName : l10n.t('doubt_chat_student_title'),
             style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 17),
           ),
           Text(
-            () {
-              switch (t.status) {
-                case DoubtStatus.open:
-                  return 'খোলা';
-                case DoubtStatus.inProgress:
-                  return 'চ্যাট চলছে';
-                case DoubtStatus.meetingScheduled:
-                  return 'Meeting scheduled';
-                case DoubtStatus.solved:
-                  return 'সমাধান হয়েছে';
-              }
-            }(),
+            _statusLabel(l10n, t.status),
             style: GoogleFonts.nunito(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
         ],
@@ -549,19 +558,19 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
           if (t.status != DoubtStatus.solved)
             TextButton(
               onPressed: _markSolved,
-              child: Text('✅ Solved', style: GoogleFonts.hindSiliguri(color: Colors.white)),
+              child: Text(l10n.t('doubt_action_solved'), style: GoogleFonts.hindSiliguri(color: Colors.white)),
             ),
         if (_isStaff && t.status != DoubtStatus.solved)
           TextButton(
             onPressed: _scheduleMeeting,
-            child: Text('📅 Meeting', style: GoogleFonts.hindSiliguri(color: Colors.white)),
+            child: Text(l10n.t('doubt_action_meeting'), style: GoogleFonts.hindSiliguri(color: Colors.white)),
           ),
         PopupMenuButton<String>(
           onSelected: (v) {
             if (v == 'purge') _purge();
           },
           itemBuilder: (ctx) => [
-            PopupMenuItem(value: 'purge', child: Text('চ্যাট মুছুন', style: GoogleFonts.hindSiliguri())),
+            PopupMenuItem(value: 'purge', child: Text(l10n.t('doubt_purge_chat'), style: GoogleFonts.hindSiliguri())),
           ],
         ),
       ],
@@ -577,7 +586,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('প্রশ্ন', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                      Text(l10n.t('doubt_question_heading'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
                       if (t.subject != null || t.chapter != null)
                         Text(
@@ -612,7 +621,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                             title: Text(
                               t.meetingTime != null
                                   ? DateFormat('dd MMM yyyy, hh:mm a').format(t.meetingTime!.toLocal())
-                                  : 'Meeting scheduled',
+                                  : l10n.t('doubt_status_meeting'),
                               style: GoogleFonts.hindSiliguri(),
                             ),
                             subtitle: Text(t.meetingNote ?? t.meetingLink!, style: GoogleFonts.hindSiliguri()),
@@ -655,7 +664,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                               children: [
                                 if (!own)
                                   Text(
-                                    sender?.fullNameBn ?? 'সদস্য',
+                                    sender?.fullNameBn ?? l10n.t('member_fallback'),
                                     style: GoogleFonts.hindSiliguri(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
@@ -670,7 +679,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                                   InkWell(
                                     onTap: () => launchUrl(Uri.parse(fileUrl)),
                                     child: Text(
-                                      body ?? 'ফাইল খুলুন',
+                                      body ?? l10n.t('doubt_open_file'),
                                       style: GoogleFonts.hindSiliguri(
                                         color: scheme.primary,
                                         decoration: TextDecoration.underline,
@@ -709,7 +718,7 @@ class _DoubtChatScreenState extends ConsumerState<DoubtChatScreen> {
                         maxLines: 4,
                         enabled: !_sending && !_uploading,
                         decoration: InputDecoration(
-                          hintText: 'মেসেজ…',
+                          hintText: l10n.t('message_hint'),
                           hintStyle: GoogleFonts.hindSiliguri(),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(

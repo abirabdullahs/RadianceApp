@@ -34,6 +34,45 @@ class NotesRepository {
 
   /// Latest published lecture note visible to the student (RLS: enrolled chapters).
   /// Returns `null` if none or if `lecture` type is unavailable in the project.
+  /// Approximate % of published notes in [courseId] marked viewed by current student.
+  Future<double> getNotesProgressPercentForCourse(String courseId) async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return 0;
+    final subjRows = await _client
+        .from(kTableSubjects)
+        .select('id')
+        .eq('course_id', courseId);
+    final subjIds = (subjRows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['id'] as String)
+        .toList();
+    if (subjIds.isEmpty) return 0;
+    final chRows = await _client
+        .from(kTableChapters)
+        .select('id')
+        .inFilter('subject_id', subjIds);
+    final chIds = (chRows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['id'] as String)
+        .toList();
+    if (chIds.isEmpty) return 0;
+    final noteRows = await _client
+        .from(kTableNotes)
+        .select('id')
+        .inFilter('chapter_id', chIds)
+        .or('is_published.eq.true,is_published.is.null');
+    final noteIds = (noteRows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map)['id'] as String)
+        .toList();
+    if (noteIds.isEmpty) return 0;
+    final progRows = await _client
+        .from(kTableNoteProgress)
+        .select('note_id')
+        .eq('student_id', uid)
+        .eq('is_viewed', true)
+        .inFilter('note_id', noteIds);
+    final viewed = (progRows as List<dynamic>).length;
+    return (viewed * 100.0) / noteIds.length;
+  }
+
   Future<Map<String, dynamic>?> getLatestLectureForCurrentStudent() async {
     try {
       final rows = await _client

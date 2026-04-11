@@ -1,380 +1,72 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
+import '../../../shared/models/exam_model.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
-import '../../../core/supabase_client.dart';
-import '../../../shared/models/payment_ledger_model.dart';
-import '../../../shared/models/payment_schedule_model.dart';
-import '../../admin/payments/repositories/payment_repository.dart';
-import '../../admin/students/repositories/student_repository.dart';
-import '../../doubts/repositories/doubt_repository.dart';
-import '../notes/repositories/notes_repository.dart';
+import '../screens/student_route_screens.dart' show showStudentQbankSearchSheet;
 import '../widgets/student_drawer.dart';
+import 'student_dashboard_provider.dart';
 
-/// Student home: dynamic summary + grid menu to all student routes.
-class StudentDashboardScreen extends ConsumerStatefulWidget {
+String _greetingPrefix(AppLocalizations l10n) {
+  final h = DateTime.now().hour;
+  if (h >= 6 && h < 12) return l10n.t('greet_morning');
+  if (h >= 12 && h < 18) return l10n.t('greet_afternoon');
+  if (h >= 18 && h < 22) return l10n.t('greet_evening');
+  return l10n.t('greet_night');
+}
+
+/// Student home: profile, alerts, stats, courses, suggestion, activity.
+class StudentDashboardScreen extends ConsumerWidget {
   const StudentDashboardScreen({super.key});
 
   @override
-  ConsumerState<StudentDashboardScreen> createState() => _StudentDashboardScreenState();
-}
-
-class _StudentDashboardScreenState extends ConsumerState<StudentDashboardScreen> {
-  late Future<_DashData> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<_DashData> _load() async {
-    final uid = supabaseClient.auth.currentUser!.id;
-    final student = await StudentRepository().getStudentById(uid);
-    final month = DateTime.now();
-    final ym = '${month.year}-${month.month.toString().padLeft(2, '0')}';
-    final att = await StudentRepository().getStudentAttendanceSummary(uid, ym);
-    final paymentRepo = PaymentRepository();
-    final dues = await paymentRepo.getPaymentSchedule(studentId: uid, onlyOpen: true);
-    final openDues = dues.where((d) => d.status != PaymentScheduleStatus.paid).toList();
-    final openDueTotal = openDues.fold<double>(
-      0,
-      (a, d) => a + (d.remainingAmount > 0 ? d.remainingAmount : d.amount),
-    );
-    final payments = await paymentRepo.getPaymentLedger(studentId: uid);
-    final lastPayment = payments.isNotEmpty ? payments.first : null;
-    final lastLecture = await NotesRepository().getLatestLectureForCurrentStudent();
-    var solvedDoubts = 0;
-    try {
-      solvedDoubts = await DoubtRepository().countSolvedForStudent(uid);
-    } catch (_) {
-      // Table/migration missing or RLS — don't break whole dashboard.
-    }
-
-    return _DashData(
-      name: student.fullNameBn,
-      college: student.college,
-      attendancePct: att['percentage'] as double?,
-      openDuesCount: openDues.length,
-      openDueTotal: openDueTotal,
-      lastPayment: lastPayment,
-      lastLectureTitle: lastLecture?['title'] as String?,
-      lastLectureChapterId: lastLecture?['chapter_id'] as String?,
-      solvedDoubtsCount: solvedDoubts,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
-    final dateFmt = DateFormat.yMMMd();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(studentDashboardProvider);
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('ড্যাশবোর্ড', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+        title: Text(l10n.t('home'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: [
+          IconButton(
+            tooltip: l10n.t('search'),
+            icon: const Icon(Icons.search),
+            onPressed: () async {
+              final r = await showStudentQbankSearchSheet(context);
+              if (r == null || !context.mounted) return;
+              context.push('/student/qbank/practice/${r.chapterId}');
+            },
+          ),
           const AppBarDrawerAction(),
           const NotificationAppBarAction(),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'রিফ্রেশ',
-            onPressed: () {
-              setState(() {
-                _future = _load();
-              });
-            },
+            tooltip: l10n.t('refresh'),
+            onPressed: () => ref.invalidate(studentDashboardProvider),
           ),
         ],
       ),
       drawer: const StudentDrawer(),
-      body: FutureBuilder<_DashData>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'লোড করা যায়নি: ${snap.error}',
-                  style: GoogleFonts.hindSiliguri(),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-          final d = snap.data!;
-          return RefreshIndicator(
-            onRefresh: () async {
-              setState(() {
-                _future = _load();
-              });
-              await _future;
-            },
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Text(
-                  'হ্যালো, ${d.name}!',
-                  style: GoogleFonts.hindSiliguri(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: context.themePrimary,
-                  ),
-                ),
-                if (d.college != null && d.college!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    d.college!.trim(),
-                    style: GoogleFonts.hindSiliguri(
-                      fontSize: 14,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                Text(
-                  'সংক্ষিপ্ত তথ্য',
-                  style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
-                ),
-                const SizedBox(height: 10),
-                _InfoCard(
-                  icon: Icons.play_circle_outline,
-                  title: 'শেষ লেকচার',
-                  subtitle: d.lastLectureTitle ?? 'কোনো লেকচার পাওয়া যায়নি',
-                  onTap: d.lastLectureChapterId != null
-                      ? () => context.push('/student/notes/${d.lastLectureChapterId}')
-                      : null,
-                ),
-                const SizedBox(height: 10),
-                _InfoCard(
-                  icon: Icons.receipt_long,
-                  title: 'শেষ পেমেন্ট',
-                  subtitle: d.lastPayment == null
-                      ? 'কোনো পেমেন্ট নেই'
-                      : '${fmt.format(d.lastPayment!.amountPaid)} · ${d.lastPayment!.paidAt != null ? dateFmt.format(d.lastPayment!.paidAt!.toLocal()) : ''}',
-                  onTap: () => context.push('/student/payments'),
-                ),
-                const SizedBox(height: 10),
-                _InfoCard(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'বকেয়া',
-                  subtitle: d.openDuesCount == 0
-                      ? 'কোনো বকেয়া নেই'
-                      : '${d.openDuesCount} টি · মোট ${fmt.format(d.openDueTotal)}',
-                  onTap: () => context.push('/student/payments'),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _AttendanceWidgetCard(
-                        attendancePct: d.attendancePct,
-                        onTap: () => context.push('/student/attendance'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _StatCard(
-                        label: 'খোলা বকেয়া (সংখ্যা)',
-                        value: '${d.openDuesCount}',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                _InfoCard(
-                  icon: Icons.help_outline,
-                  title: 'সন্দেহ সমাধান',
-                  subtitle: '${d.solvedDoubtsCount} টি সন্দেহ সমাধান হয়েছে',
-                  onTap: () => context.push('/student/doubts'),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'মেনু',
-                  style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
-                ),
-                const SizedBox(height: 12),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.05,
-                  children: [
-                    _MenuSquare(
-                      icon: Icons.school_outlined,
-                      label: 'ক্লাসনোট',
-                      onTap: () => context.push('/student/courses'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.quiz_outlined,
-                      label: 'পরীক্ষা',
-                      onTap: () => context.push('/student/exams'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.emoji_events_outlined,
-                      label: 'ফলাফল',
-                      onTap: () => context.push('/student/results'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.payments_outlined,
-                      label: 'পেমেন্ট',
-                      onTap: () => context.push('/student/payments'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.event_available_outlined,
-                      label: 'উপস্থিতি',
-                      onTap: () => context.push('/student/attendance'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.groups_outlined,
-                      label: 'গ্রুপ',
-                      onTap: () => context.push('/student/community'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.library_books_outlined,
-                      label: 'প্রশ্ন ব্যাংক',
-                      onTap: () => context.push('/student/qbank'),
-                    ),
-                    _MenuSquare(
-                      icon: Icons.help_outline,
-                      label: 'সন্দেহ সমাধান',
-                      onTap: () => context.push('/student/doubts'),
-                    ),
-                  ],
-                ),
-              ],
+      body: async.when(
+        data: (d) => _DashboardScrollBody(data: d, l10n: l10n),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              '${l10n.t('load_failed')}: $e',
+              style: GoogleFonts.hindSiliguri(),
+              textAlign: TextAlign.center,
             ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _DashData {
-  const _DashData({
-    required this.name,
-    this.college,
-    required this.attendancePct,
-    required this.openDuesCount,
-    required this.openDueTotal,
-    this.lastPayment,
-    this.lastLectureTitle,
-    this.lastLectureChapterId,
-    required this.solvedDoubtsCount,
-  });
-
-  final String name;
-  final String? college;
-  final double? attendancePct;
-  final int openDuesCount;
-  final double openDueTotal;
-  final PaymentLedgerModel? lastPayment;
-  final String? lastLectureTitle;
-  final String? lastLectureChapterId;
-  final int solvedDoubtsCount;
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: GoogleFonts.hindSiliguri(fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(value, style: GoogleFonts.nunito(fontSize: 20, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AttendanceWidgetCard extends StatelessWidget {
-  const _AttendanceWidgetCard({
-    required this.attendancePct,
-    required this.onTap,
-  });
-
-  final double? attendancePct;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = (attendancePct ?? 0).clamp(0, 100).toDouble();
-    final regular = pct >= 75;
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('📅 আমার উপস্থিতি', style: GoogleFonts.hindSiliguri(fontSize: 12)),
-              const SizedBox(height: 8),
-              Center(
-                child: SizedBox(
-                  width: 66,
-                  height: 66,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CircularProgressIndicator(
-                        value: pct / 100.0,
-                        strokeWidth: 7,
-                        backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation(
-                          regular ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
-                        ),
-                      ),
-                      Center(
-                        child: Text(
-                          attendancePct == null ? '—' : '${pct.toStringAsFixed(0)}%',
-                          style: GoogleFonts.nunito(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                regular ? '🟢 নিয়মিত' : '⚠️ সতর্কতা',
-                style: GoogleFonts.hindSiliguri(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: regular ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text('বিস্তারিত →', style: GoogleFonts.hindSiliguri(fontSize: 11)),
-              ),
-            ],
           ),
         ),
       ),
@@ -382,56 +74,434 @@ class _AttendanceWidgetCard extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
+class _DashboardScrollBody extends ConsumerWidget {
+  const _DashboardScrollBody({required this.data, required this.l10n});
+
+  final StudentDashboardData data;
+  final AppLocalizations l10n;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
+    final s = data.student;
+    final sid = s.studentId?.trim();
+    final idLabel =
+        (sid != null && sid.isNotEmpty) ? sid : (s.phone.isNotEmpty ? s.phone : '—');
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(studentDashboardProvider);
+        await ref.read(studentDashboardProvider.future);
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _ProfileCard(
+            greetingPrefix: _greetingPrefix(l10n),
+            name: s.fullNameBn,
+            idLabel: idLabel,
+            subtitle: s.college?.trim().isNotEmpty == true ? s.college!.trim() : null,
+            avatarUrl: s.avatarUrl,
+          ),
+          const SizedBox(height: 12),
+          if (data.alerts.isNotEmpty) ...[
+            SizedBox(
+              height: data.alerts.length == 1 ? 72 : 88,
+              child: PageView.builder(
+                itemCount: data.alerts.length,
+                itemBuilder: (context, i) {
+                  final a = data.alerts[i];
+                  final scheme = Theme.of(context).colorScheme;
+                  final color = a.kind == StudentDashboardAlertKind.paymentDue
+                      ? scheme.error
+                      : (a.kind == StudentDashboardAlertKind.attendanceLow
+                          ? Colors.orange.shade800
+                          : scheme.primary);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        onTap: () => context.push(a.route),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: color, size: 22),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  a.message,
+                                  style: GoogleFonts.hindSiliguri(
+                                    fontSize: 13,
+                                    color: color,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                a.actionLabel,
+                                style: GoogleFonts.hindSiliguri(
+                                  fontSize: 12,
+                                  color: color,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          Text(
+            l10n.t('summary'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 128,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _MiniStatCard(
+                  title: l10n.t('attendance'),
+                  line1: data.paymentMonthLabel,
+                  line2: data.attendanceTotal > 0
+                      ? '${data.attendancePresent}/${data.attendanceTotal}'
+                      : '—',
+                  line3: data.attendancePct != null
+                      ? '${data.attendancePct!.toStringAsFixed(0)}%'
+                      : '—',
+                  onTap: () => context.push('/student/attendance'),
+                ),
+                _MiniStatCard(
+                  title: l10n.t('last_result'),
+                  line1: data.latestResult?.examTitle ?? '—',
+                  line2: data.latestResult != null
+                      ? '${data.latestResult!.score.toStringAsFixed(0)}/${data.latestResult!.totalMarks.toStringAsFixed(0)}'
+                      : '—',
+                  line3: data.latestResult != null
+                      ? '${data.latestResult!.percentage.toStringAsFixed(0)}%${data.latestResult!.rank != null ? ' · ${l10n.t('rank_prefix')}${data.latestResult!.rank}' : ''}'
+                      : '',
+                  onTap: () => context.push('/student/results'),
+                ),
+                _MiniStatCard(
+                  title: l10n.t('payments'),
+                  line1: data.paymentMonthLabel,
+                  line2: data.paymentOk
+                      ? l10n.t('paid')
+                      : '${data.openDuesCount} ${l10n.t('dues_label')}',
+                  line3: data.openDueTotal > 0 ? fmt.format(data.openDueTotal) : '✓',
+                  onTap: () => context.push('/student/payments'),
+                ),
+                _MiniStatCard(
+                  title: l10n.t('doubts_title'),
+                  line1: l10n.t('doubts_open').replaceAll('{n}', '${data.openDoubts}'),
+                  line2: l10n.t('doubts_replying').replaceAll('{n}', '${data.inProgressDoubts}'),
+                  line3: l10n.t('doubts_solved').replaceAll('{n}', '${data.solvedDoubtsCount}'),
+                  onTap: () => context.push('/student/doubts'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            l10n.t('upcoming'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          if (data.upcomingExams.isEmpty)
+            Text(l10n.t('no_upcoming_exams'), style: GoogleFonts.hindSiliguri())
+          else
+            ...data.upcomingExams.take(4).map((e) => _ExamTile(exam: e)),
+          const SizedBox(height: 20),
+          Text(
+            l10n.t('my_courses'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          if (data.enrolledCourses.isEmpty)
+            Text(l10n.t('no_courses_enrolled'), style: GoogleFonts.hindSiliguri())
+          else
+            SizedBox(
+              height: 168,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: data.enrolledCourses.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (context, i) {
+                  final t = data.enrolledCourses[i];
+                  final c = t.course;
+                  final pct = t.notesProgressPct.clamp(0, 100);
+                  return SizedBox(
+                    width: 220,
+                    child: Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => context.push('/student/courses/${c.id}'),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${l10n.t('notes_progress')}: ${pct.toStringAsFixed(0)}%',
+                                style: GoogleFonts.nunito(fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              LinearProgressIndicator(value: pct / 100.0, minHeight: 5),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 20),
+          Text(
+            l10n.t('daily_suggestion'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('💡', style: TextStyle(fontSize: 22)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      data.dailySuggestion,
+                      style: GoogleFonts.hindSiliguri(height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            l10n.t('recent_activity'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          if (data.recentActivity.isEmpty)
+            Text(l10n.t('no_recent_activity'), style: GoogleFonts.hindSiliguri())
+          else
+            ...data.recentActivity.map(
+              (a) => ListTile(
+                dense: true,
+                leading: Text(a.icon, style: const TextStyle(fontSize: 20)),
+                title: Text(a.title, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+                subtitle: Text(a.subtitle, style: GoogleFonts.hindSiliguri(fontSize: 12)),
+                onTap: () => context.push(a.route),
+              ),
+            ),
+          const SizedBox(height: 24),
+          Text(
+            l10n.t('menu_grid'),
+            style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.05,
+            children: [
+              _MenuSquare(
+                icon: Icons.school_outlined,
+                label: l10n.t('class_notes'),
+                onTap: () => context.push('/student/courses'),
+              ),
+              _MenuSquare(
+                icon: Icons.quiz_outlined,
+                label: l10n.t('exams'),
+                onTap: () => context.push('/student/exams'),
+              ),
+              _MenuSquare(
+                icon: Icons.emoji_events_outlined,
+                label: l10n.t('results'),
+                onTap: () => context.push('/student/results'),
+              ),
+              _MenuSquare(
+                icon: Icons.payments_outlined,
+                label: l10n.t('payments'),
+                onTap: () => context.push('/student/payments'),
+              ),
+              _MenuSquare(
+                icon: Icons.event_available_outlined,
+                label: l10n.t('attendance'),
+                onTap: () => context.push('/student/attendance'),
+              ),
+              _MenuSquare(
+                icon: Icons.groups_outlined,
+                label: l10n.t('group_short'),
+                onTap: () => context.push('/student/community'),
+              ),
+              _MenuSquare(
+                icon: Icons.library_books_outlined,
+                label: l10n.t('question_bank'),
+                onTap: () => context.push('/student/qbank'),
+              ),
+              _MenuSquare(
+                icon: Icons.help_outline,
+                label: l10n.t('doubt_solve'),
+                onTap: () => context.push('/student/doubts'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({
+    required this.greetingPrefix,
+    required this.name,
+    required this.idLabel,
+    this.subtitle,
+    this.avatarUrl,
   });
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
+  final String greetingPrefix;
+  final String name;
+  final String idLabel;
+  final String? subtitle;
+  final String? avatarUrl;
 
   @override
   Widget build(BuildContext context) {
-    final child = Card(
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            Icon(icon, size: 32, color: context.themePrimary),
-            const SizedBox(width: 12),
+            CircleAvatar(
+              radius: 36,
+              backgroundColor: scheme.primaryContainer,
+              backgroundImage: avatarUrl != null && avatarUrl!.trim().isNotEmpty
+                  ? CachedNetworkImageProvider(avatarUrl!.trim())
+                  : null,
+              child: avatarUrl == null || avatarUrl!.trim().isEmpty
+                  ? Icon(Icons.person, size: 36, color: scheme.primary)
+                  : null,
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
+                    '$greetingPrefix $name! 👋',
                     style: GoogleFonts.hindSiliguri(
-                      fontSize: 13,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: context.themePrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(idLabel, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle!, style: GoogleFonts.hindSiliguri(fontSize: 13)),
+                  ],
                 ],
               ),
             ),
-            if (onTap != null) Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.outline),
           ],
         ),
       ),
     );
-    if (onTap == null) return child;
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: child);
+  }
+}
+
+class _MiniStatCard extends StatelessWidget {
+  const _MiniStatCard({
+    required this.title,
+    required this.line1,
+    required this.line2,
+    required this.line3,
+    required this.onTap,
+  });
+
+  final String title;
+  final String line1;
+  final String line2;
+  final String line3;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(right: 10),
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 132,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: GoogleFonts.hindSiliguri(fontSize: 11)),
+                const Spacer(),
+                Text(line1, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.hindSiliguri(fontSize: 11)),
+                Text(line2, style: GoogleFonts.nunito(fontWeight: FontWeight.w800, fontSize: 13)),
+                if (line3.isNotEmpty)
+                  Text(line3, style: GoogleFonts.nunito(fontSize: 11)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExamTile extends StatelessWidget {
+  const _ExamTile({required this.exam});
+
+  final ExamModel exam;
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat.yMMMd().add_jm();
+    final when = exam.startTime ?? exam.examDate;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(exam.examMode == 'online' ? Icons.language : Icons.assignment_outlined),
+        title: Text(exam.title, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+        subtitle: Text(
+          when != null ? df.format(when.toLocal()) : exam.status,
+          style: GoogleFonts.nunito(fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/student/exams'),
+      ),
+    );
   }
 }
 

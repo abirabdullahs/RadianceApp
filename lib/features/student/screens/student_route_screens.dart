@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../question_bank/providers/qbank_providers.dart';
 import '../../question_bank/repositories/qbank_repository.dart';
@@ -38,6 +39,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final userAsync = ref.watch(currentUserProvider);
     final sessionsAsync = ref.watch(qbankSessionsProvider);
 
@@ -47,10 +49,10 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('প্রশ্ন ব্যাংক', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('question_bank'), style: GoogleFonts.hindSiliguri()),
         actions: [
           IconButton(
-            tooltip: 'রিফ্রেশ',
+            tooltip: l10n.t('refresh'),
             onPressed: () {
               ref.invalidate(qbankSessionsProvider);
               if (_sessionId != null) ref.invalidate(qbankSubjectsProvider(_sessionId!));
@@ -63,7 +65,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            tooltip: 'Bookmarks',
+            tooltip: l10n.t('qbank_bookmarks_tooltip'),
             onPressed: () async {
               final user = await ref.read(currentUserProvider.future);
               final uid = user?.id;
@@ -73,9 +75,9 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
             icon: const Icon(Icons.bookmark_outline),
           ),
           IconButton(
-            tooltip: 'Search',
+            tooltip: l10n.t('search'),
             onPressed: () async {
-              final selected = await _openSearchSheet(
+              final selected = await showStudentQbankSearchSheet(
                 context,
                 initialSessionId: _sessionId,
                 initialSubjectId: _subjectId,
@@ -97,14 +99,14 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
       body: sessionsAsync.when(
         data: (sessions) {
           if (sessions.isEmpty) {
-            return Center(child: Text('এখনো কোনো সেশন নেই', style: GoogleFonts.hindSiliguri()));
+            return Center(child: Text(l10n.t('qbank_no_sessions'), style: GoogleFonts.hindSiliguri()));
           }
           _sessionId ??= sessions.first.id;
           final subjectsAsync = ref.watch(qbankSubjectsProvider(_sessionId!));
           return subjectsAsync.when(
             data: (subjects) {
               if (subjects.isEmpty) {
-                return Center(child: Text('এই সেশনে কোনো বিষয় নেই', style: GoogleFonts.hindSiliguri()));
+                return Center(child: Text(l10n.t('qbank_no_subjects'), style: GoogleFonts.hindSiliguri()));
               }
               _subjectId ??= subjects.first.id;
               final chaptersAsync = ref.watch(qbankChaptersProvider(_subjectId!));
@@ -112,7 +114,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                 data: (chapters) {
                   if (chapters.isEmpty) {
                     return Center(
-                      child: Text('এই বিষয়ে কোনো অধ্যায় নেই', style: GoogleFonts.hindSiliguri()),
+                      child: Text(l10n.t('qbank_no_chapters'), style: GoogleFonts.hindSiliguri()),
                     );
                   }
                   _chapterId ??= chapters.first.id;
@@ -125,7 +127,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                             DropdownButtonFormField<String>(
                               initialValue: _sessionId,
                               decoration: InputDecoration(
-                                labelText: 'সেশন',
+                                labelText: l10n.t('qbank_label_session'),
                                 labelStyle: GoogleFonts.hindSiliguri(),
                                 border: const OutlineInputBorder(),
                               ),
@@ -150,7 +152,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                             DropdownButtonFormField<String>(
                               initialValue: _subjectId,
                               decoration: InputDecoration(
-                                labelText: 'বিষয়',
+                                labelText: l10n.t('qbank_label_subject'),
                                 labelStyle: GoogleFonts.hindSiliguri(),
                                 border: const OutlineInputBorder(),
                               ),
@@ -174,7 +176,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                             DropdownButtonFormField<String>(
                               initialValue: _chapterId,
                               decoration: InputDecoration(
-                                labelText: 'অধ্যায়',
+                                labelText: l10n.t('qbank_label_chapter'),
                                 labelStyle: GoogleFonts.hindSiliguri(),
                                 border: const OutlineInputBorder(),
                               ),
@@ -211,7 +213,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                                         );
                                       },
                                 icon: const Icon(Icons.bolt_outlined),
-                                label: Text('Practice শুরু করুন', style: GoogleFonts.hindSiliguri()),
+                                label: Text(l10n.t('qbank_start_practice'), style: GoogleFonts.hindSiliguri()),
                               ),
                             ),
                           ],
@@ -219,9 +221,9 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                       ),
                       TabBar(
                         controller: _tab,
-                        tabs: const [
-                          Tab(text: 'MCQ'),
-                          Tab(text: 'CQ'),
+                        tabs: [
+                          Tab(text: l10n.t('qbank_tab_mcq')),
+                          Tab(text: l10n.t('qbank_tab_cq')),
                         ],
                       ),
                       Expanded(
@@ -237,15 +239,15 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Chapter load failed: $e')),
+                error: (e, _) => Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Subject load failed: $e')),
+            error: (e, _) => Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Session load failed: $e')),
+        error: (e, _) => Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri())),
       ),
     );
   }
@@ -253,8 +255,10 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
   Future<void> _showBookmarksDialog(BuildContext context, String studentId) async {
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('আমার Bookmarks', style: GoogleFonts.hindSiliguri()),
+      builder: (ctx) {
+        final dl10n = AppLocalizations.of(ctx);
+        return AlertDialog(
+        title: Text(dl10n.t('qbank_my_bookmarks'), style: GoogleFonts.hindSiliguri()),
         content: SizedBox(
           width: 560,
           child: Consumer(
@@ -263,7 +267,7 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
               return async.when(
                 data: (items) {
                   if (items.isEmpty) {
-                    return Center(child: Text('কোনো বুকমার্ক নেই', style: GoogleFonts.hindSiliguri()));
+                    return Center(child: Text(dl10n.t('qbank_no_bookmarks'), style: GoogleFonts.hindSiliguri()));
                   }
                   return ListView.separated(
                     shrinkWrap: true,
@@ -283,14 +287,14 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                               final noteCtl = TextEditingController(text: b.note ?? '');
                               final note = await showDialog<String>(
                                 context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: Text('নোট', style: GoogleFonts.hindSiliguri()),
+                                builder: (ctx2) => AlertDialog(
+                                  title: Text(dl10n.t('qbank_bookmark_note_title'), style: GoogleFonts.hindSiliguri()),
                                   content: TextField(controller: noteCtl, maxLines: 3),
                                   actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.pop(ctx2), child: Text(dl10n.t('cancel'), style: GoogleFonts.hindSiliguri())),
                                     FilledButton(
-                                      onPressed: () => Navigator.pop(ctx, noteCtl.text),
-                                      child: const Text('Save'),
+                                      onPressed: () => Navigator.pop(ctx2, noteCtl.text),
+                                      child: Text(dl10n.t('save'), style: GoogleFonts.hindSiliguri()),
                                     ),
                                   ],
                                 ),
@@ -301,9 +305,9 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                               }
                             }
                           },
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(value: 'note', child: Text('Edit note')),
-                            PopupMenuItem(value: 'delete', child: Text('Remove')),
+                          itemBuilder: (_) => [
+                            PopupMenuItem(value: 'note', child: Text(dl10n.t('qbank_bookmark_edit_note'), style: GoogleFonts.hindSiliguri())),
+                            PopupMenuItem(value: 'delete', child: Text(dl10n.t('qbank_bookmark_remove'), style: GoogleFonts.hindSiliguri())),
                           ],
                         ),
                       );
@@ -312,33 +316,36 @@ class _QBankScreenState extends ConsumerState<QBankScreen>
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('$e'),
+                error: (e, _) => Text(dl10n.t('load_failed'), style: GoogleFonts.hindSiliguri()),
               );
             },
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(dl10n.t('close'), style: GoogleFonts.hindSiliguri())),
         ],
-      ),
+      );
+      },
     );
   }
 
-  Future<QbankSearchResult?> _openSearchSheet(
-    BuildContext context, {
-    String? initialSessionId,
-    String? initialSubjectId,
-  }) async {
-    return showModalBottomSheet<QbankSearchResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _QbankSearchSheet(
-        initialSessionId: initialSessionId,
-        initialSubjectId: initialSubjectId,
-      ),
-    );
-  }
+}
+
+/// Same q-bank search UI as [QBankScreen] — use from student home search icon.
+Future<QbankSearchResult?> showStudentQbankSearchSheet(
+  BuildContext context, {
+  String? initialSessionId,
+  String? initialSubjectId,
+}) async {
+  return showModalBottomSheet<QbankSearchResult>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _QbankSearchSheet(
+      initialSessionId: initialSessionId,
+      initialSubjectId: initialSubjectId,
+    ),
+  );
 }
 
 class _QbankSearchSheet extends StatefulWidget {
@@ -381,6 +388,7 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -391,12 +399,12 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('প্রশ্ন খুঁজুন', style: GoogleFonts.hindSiliguri(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(l10n.t('qbank_search_title'), style: GoogleFonts.hindSiliguri(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           TextField(
             controller: _queryCtl,
             decoration: InputDecoration(
-              hintText: 'যেকোনো প্রশ্ন খুঁজুন...',
+              hintText: l10n.t('qbank_search_hint'),
               hintStyle: GoogleFonts.hindSiliguri(),
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.search),
@@ -409,14 +417,15 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
               Expanded(
                 child: DropdownButtonFormField<String?>(
                   initialValue: _type,
-                  decoration: const InputDecoration(
-                    labelText: 'ধরন',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.t('qbank_filter_type'),
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
                   ),
-                  items: const [
-                    DropdownMenuItem<String?>(value: null, child: Text('সব')),
-                    DropdownMenuItem<String?>(value: 'mcq', child: Text('MCQ')),
-                    DropdownMenuItem<String?>(value: 'cq', child: Text('CQ')),
+                  items: [
+                    DropdownMenuItem<String?>(value: null, child: Text(l10n.t('qbank_all_items'), style: GoogleFonts.hindSiliguri())),
+                    DropdownMenuItem<String?>(value: 'mcq', child: Text(l10n.t('qbank_tab_mcq'), style: GoogleFonts.nunito())),
+                    DropdownMenuItem<String?>(value: 'cq', child: Text(l10n.t('qbank_tab_cq'), style: GoogleFonts.nunito())),
                   ],
                   onChanged: (v) => setState(() => _type = v),
                 ),
@@ -425,9 +434,13 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
               Expanded(
                 child: DropdownButtonFormField<String?>(
                   initialValue: _sessionId,
-                  decoration: const InputDecoration(labelText: 'Session', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    labelText: l10n.t('qbank_session'),
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
+                  ),
                   items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('All')),
+                    DropdownMenuItem<String?>(value: null, child: Text(l10n.t('qbank_all_items'), style: GoogleFonts.hindSiliguri())),
                     ..._sessions.map((s) => DropdownMenuItem<String?>(value: s.id, child: Text(s.name))),
                   ],
                   onChanged: (v) async {
@@ -444,9 +457,13 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
               Expanded(
                 child: DropdownButtonFormField<String?>(
                   initialValue: _subjectId,
-                  decoration: const InputDecoration(labelText: 'Subject', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                    labelText: l10n.t('qbank_subject'),
+                    labelStyle: GoogleFonts.hindSiliguri(),
+                    border: const OutlineInputBorder(),
+                  ),
                   items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('All')),
+                    DropdownMenuItem<String?>(value: null, child: Text(l10n.t('qbank_all_items'), style: GoogleFonts.hindSiliguri())),
                     ..._subjects.map((s) => DropdownMenuItem<String?>(value: s.id, child: Text(s.nameBn))),
                   ],
                   onChanged: (v) => setState(() => _subjectId = v),
@@ -456,7 +473,7 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
               FilledButton.icon(
                 onPressed: _loading ? null : _search,
                 icon: const Icon(Icons.search),
-                label: Text('Search', style: GoogleFonts.nunito()),
+                label: Text(l10n.t('qbank_search_button'), style: GoogleFonts.hindSiliguri()),
               ),
             ],
           ),
@@ -467,7 +484,7 @@ class _QbankSearchSheetState extends State<_QbankSearchSheet> {
                 : _results.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Text('ফলাফল নেই', style: GoogleFonts.hindSiliguri()),
+                        child: Text(l10n.t('qbank_no_search_results'), style: GoogleFonts.hindSiliguri()),
                       )
                     : ListView.separated(
                         shrinkWrap: true,
@@ -561,61 +578,75 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final user = ref.watch(currentUserProvider).value;
     final uid = user?.id;
     return Scaffold(
       appBar: AppBar(
-        title: Text('Practice Mode', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        title: Text(l10n.t('qbank_practice_mode'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
       ),
       body: uid == null
-          ? Center(child: Text('লগইন প্রয়োজন', style: GoogleFonts.hindSiliguri()))
+          ? Center(child: Text(l10n.t('qbank_login_required'), style: GoogleFonts.hindSiliguri()))
           : _loading
               ? const Center(child: CircularProgressIndicator())
               : !_started
-                  ? _buildStart(uid)
+                  ? _buildStart(context, uid)
                   : _current >= _questions.length
-                      ? _buildSummary(uid)
-                      : _buildQuestion(),
+                      ? _buildSummary(context, uid)
+                      : _buildQuestion(context),
     );
   }
 
-  Widget _buildStart(String uid) {
+  Widget _buildStart(BuildContext context, String uid) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(widget.chapterName ?? 'অধ্যায় প্র্যাকটিস', style: GoogleFonts.hindSiliguri(fontSize: 18)),
+          Text(widget.chapterName ?? l10n.t('qbank_chapter_practice'), style: GoogleFonts.hindSiliguri(fontSize: 18)),
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
             initialValue: _difficulty,
-            decoration: const InputDecoration(labelText: 'কঠিনতা', border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem<String?>(value: null, child: Text('সব')),
-              DropdownMenuItem<String?>(value: 'easy', child: Text('সহজ')),
-              DropdownMenuItem<String?>(value: 'medium', child: Text('মধ্যম')),
-              DropdownMenuItem<String?>(value: 'hard', child: Text('কঠিন')),
+            decoration: InputDecoration(
+              labelText: l10n.t('qbank_difficulty'),
+              labelStyle: GoogleFonts.hindSiliguri(),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text(l10n.t('qbank_all_items'), style: GoogleFonts.hindSiliguri())),
+              DropdownMenuItem<String?>(value: 'easy', child: Text(l10n.t('qbank_difficulty_easy'), style: GoogleFonts.hindSiliguri())),
+              DropdownMenuItem<String?>(value: 'medium', child: Text(l10n.t('qbank_difficulty_medium'), style: GoogleFonts.hindSiliguri())),
+              DropdownMenuItem<String?>(value: 'hard', child: Text(l10n.t('qbank_difficulty_hard'), style: GoogleFonts.hindSiliguri())),
             ],
             onChanged: (v) => setState(() => _difficulty = v),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String?>(
             initialValue: _source,
-            decoration: const InputDecoration(labelText: 'উৎস', border: OutlineInputBorder()),
-            items: const [
-              DropdownMenuItem<String?>(value: null, child: Text('সব')),
-              DropdownMenuItem<String?>(value: 'board', child: Text('board')),
-              DropdownMenuItem<String?>(value: 'practice', child: Text('practice')),
-              DropdownMenuItem<String?>(value: 'custom', child: Text('custom')),
+            decoration: InputDecoration(
+              labelText: l10n.t('qbank_source'),
+              labelStyle: GoogleFonts.hindSiliguri(),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text(l10n.t('qbank_all_items'), style: GoogleFonts.hindSiliguri())),
+              DropdownMenuItem<String?>(value: 'board', child: Text(l10n.t('qbank_source_board'), style: GoogleFonts.nunito())),
+              DropdownMenuItem<String?>(value: 'practice', child: Text(l10n.t('qbank_source_practice'), style: GoogleFonts.nunito())),
+              DropdownMenuItem<String?>(value: 'custom', child: Text(l10n.t('qbank_source_custom'), style: GoogleFonts.nunito())),
             ],
             onChanged: (v) => setState(() => _source = v),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             initialValue: _count,
-            decoration: const InputDecoration(labelText: 'প্রশ্ন সংখ্যা', border: OutlineInputBorder()),
-            items: const [10, 20, 30]
-                .map((e) => DropdownMenuItem<int>(value: e, child: Text('$e')))
+            decoration: InputDecoration(
+              labelText: l10n.t('qbank_question_count'),
+              labelStyle: GoogleFonts.hindSiliguri(),
+              border: const OutlineInputBorder(),
+            ),
+            items: [10, 20, 30]
+                .map((e) => DropdownMenuItem<int>(value: e, child: Text('$e', style: GoogleFonts.nunito())))
                 .toList(),
             onChanged: (v) => setState(() => _count = v ?? 10),
           ),
@@ -625,13 +656,13 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
               FilledButton.icon(
                 onPressed: () => _start(uid),
                 icon: const Icon(Icons.play_arrow),
-                label: Text('Practice শুরু', style: GoogleFonts.hindSiliguri()),
+                label: Text(l10n.t('qbank_practice_start'), style: GoogleFonts.hindSiliguri()),
               ),
               const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: () => _loadHistory(uid),
                 icon: const Icon(Icons.history),
-                label: Text('History', style: GoogleFonts.hindSiliguri()),
+                label: Text(l10n.t('qbank_history'), style: GoogleFonts.hindSiliguri()),
               ),
             ],
           ),
@@ -648,14 +679,20 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
     );
   }
 
-  Widget _buildQuestion() {
+  Widget _buildQuestion(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final q = _questions[_current];
+    final progress = l10n.t('qbank_question_progress').replaceAll('{n}', '${_current + 1}').replaceAll('{m}', '${_questions.length}');
+    final timerLine = l10n
+        .t('qbank_timer_line')
+        .replaceAll('{total}', _fmtDuration(_quizWatch.elapsed))
+        .replaceAll('{q}', _fmtDuration(_questionWatch.elapsed));
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('প্রশ্ন ${_current + 1}/${_questions.length}', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+        Text(progress, style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
         Text(
-          'সময়: ${_fmtDuration(_quizWatch.elapsed)} · এই প্রশ্ন: ${_fmtDuration(_questionWatch.elapsed)}',
+          timerLine,
           style: GoogleFonts.nunito(fontSize: 12),
         ),
         const SizedBox(height: 10),
@@ -687,33 +724,33 @@ class _QBankPracticeScreenState extends ConsumerState<QBankPracticeScreen> {
               Expanded(
                 child: FilledButton(
                   onPressed: _selected == null ? null : _submitCurrent,
-                  child: Text('উত্তর দাও', style: GoogleFonts.hindSiliguri()),
+                  child: Text(l10n.t('qbank_submit_answer'), style: GoogleFonts.hindSiliguri()),
                 ),
               ),
               const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: _skipCurrent,
-                child: Text('Skip', style: GoogleFonts.nunito()),
+                child: Text(l10n.t('qbank_skip'), style: GoogleFonts.hindSiliguri()),
               ),
             ],
           ),
         if (_answered) ...[
           Text(
             _selected == q.correctOption
-                ? '✅ সঠিক!'
-                : '❌ ভুল! সঠিক উত্তর: ${q.correctOption}',
+                ? l10n.t('qbank_answer_correct')
+                : l10n.t('qbank_answer_wrong').replaceAll('{opt}', q.correctOption),
             style: GoogleFonts.hindSiliguri(),
           ),
           if ((q.explanation ?? '').isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('ব্যাখ্যা: ${q.explanation}', style: GoogleFonts.hindSiliguri()),
+              child: Text('${l10n.t('qbank_explanation')} ${q.explanation}', style: GoogleFonts.hindSiliguri()),
             ),
           const SizedBox(height: 10),
           FilledButton(
             onPressed: _next,
             child: Text(
-              _current + 1 >= _questions.length ? 'Summary দেখুন' : 'পরের প্রশ্ন',
+              _current + 1 >= _questions.length ? l10n.t('qbank_view_summary') : l10n.t('qbank_next_question'),
               style: GoogleFonts.hindSiliguri(),
             ),
           ),

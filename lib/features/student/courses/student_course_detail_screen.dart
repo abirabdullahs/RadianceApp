@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../shared/models/chapter_model.dart';
 import '../../../shared/models/course_model.dart';
 import '../../../shared/models/subject_model.dart';
@@ -46,6 +47,28 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     return FutureBuilder<_CourseBundle>(
       future: _future,
       builder: (context, snap) {
+        final l10n = AppLocalizations.of(context);
+        if (snap.hasError) {
+          return Scaffold(
+            drawer: const StudentDrawer(),
+            appBar: AppBar(
+              leading: const AppBarDrawerLeading(),
+              automaticallyImplyLeading: false,
+              leadingWidth: leadingWidthForDrawer(context),
+              actions: const [AppBarDrawerAction()],
+            ),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${l10n.t('load_failed')}: ${snap.error}',
+                  style: GoogleFonts.hindSiliguri(),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
         if (!snap.hasData) {
           return Scaffold(
             drawer: const StudentDrawer(),
@@ -75,7 +98,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 Text(b.course.description!, style: GoogleFonts.hindSiliguri()),
               const SizedBox(height: 16),
               Text(
-                'বিষয়সমূহ',
+                l10n.t('subjects_heading'),
                 style: GoogleFonts.hindSiliguri(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,

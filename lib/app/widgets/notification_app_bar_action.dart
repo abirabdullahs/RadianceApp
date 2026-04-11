@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/profile_role_notifier.dart';
+import '../../core/constants.dart';
 import '../../features/notifications/providers/unread_notifications_provider.dart';
 
-/// Bell icon + unread badge; opens [NotificationsScreen] route.
+/// Bell icon + unread badge; opens notifications for the current role.
 class NotificationAppBarAction extends ConsumerWidget {
   const NotificationAppBarAction({super.key});
 
@@ -22,7 +24,14 @@ class NotificationAppBarAction extends ConsumerWidget {
             : Text('$n', style: const TextStyle(fontSize: 10)),
         child: const Icon(Icons.notifications_outlined),
       ),
-      onPressed: () => context.push('/student/notifications'),
+      onPressed: () {
+        final role = effectiveRoleFromSession();
+        if (role == kRoleAdmin) {
+          context.push('/admin/notifications');
+        } else {
+          context.push('/student/notifications');
+        }
+      },
     );
   }
 }

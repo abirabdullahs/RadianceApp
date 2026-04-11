@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
 import '../../../core/supabase_client.dart';
@@ -33,22 +34,23 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
   }
 
   Future<void> _confirmPurge(DoubtThreadModel d) async {
+    final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('চ্যাট মুছবেন?', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+        title: Text(l10n.t('doubt_purge_chat_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
         content: Text(
-          'এই সন্দেহের মেসেজগুলো সার্ভার থেকে মুছে যাবে। থ্রেড থাকবে।',
+          l10n.t('doubt_purge_thread_body'),
           style: GoogleFonts.hindSiliguri(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('না', style: GoogleFonts.hindSiliguri()),
+            child: Text(l10n.t('common_no'), style: GoogleFonts.hindSiliguri()),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('হ্যাঁ, মুছুন', style: GoogleFonts.hindSiliguri()),
+            child: Text(l10n.t('doubt_purge_confirm'), style: GoogleFonts.hindSiliguri()),
           ),
         ],
       ),
@@ -58,7 +60,7 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
       await _repo.purgeMessages(d.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('মেসেজ মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text(AppLocalizations.of(context).t('doubt_messages_deleted'), style: GoogleFonts.hindSiliguri())),
       );
       setState(() {
         _future = _repo.listMyDoubts();
@@ -66,26 +68,27 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ব্যর্থ: $e', style: GoogleFonts.hindSiliguri())),
+        SnackBar(content: Text('${AppLocalizations.of(context).t('failed')}: $e', style: GoogleFonts.hindSiliguri())),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('সন্দেহ সমাধান', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+        title: Text(l10n.t('doubt_solve'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
         actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/student/doubts/new'),
         icon: const Icon(Icons.add),
-        label: Text('নতুন সন্দেহ', style: GoogleFonts.hindSiliguri()),
+        label: Text(l10n.t('doubt_new_short'), style: GoogleFonts.hindSiliguri()),
       ),
       body: FutureBuilder<List<DoubtThreadModel>>(
         future: _future,
@@ -94,7 +97,7 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('${snap.error}', style: GoogleFonts.hindSiliguri()));
+            return Center(child: Text(l10n.t('load_failed'), style: GoogleFonts.hindSiliguri()));
           }
           final list = snap.data ?? [];
           if (list.isEmpty) {
@@ -102,7 +105,7 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'কোনো সন্দেহ নেই। নিচের বাটনে নতুন সন্দেহ জমা দিন।',
+                  l10n.t('doubt_list_empty'),
                   style: GoogleFonts.hindSiliguri(),
                   textAlign: TextAlign.center,
                 ),
@@ -134,11 +137,11 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
                         child: Row(
                           children: [
                             Expanded(
-                              child: _StatCard(label: 'জমা', value: '$submitted'),
+                              child: _StatCard(label: l10n.t('doubt_stat_submitted'), value: '$submitted'),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: _StatCard(label: 'Solved', value: '$solved'),
+                              child: _StatCard(label: l10n.t('doubt_stat_solved_count'), value: '$solved'),
                             ),
                           ],
                         ),
@@ -162,7 +165,7 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
                     style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    _statusText(d.status),
+                    _statusText(l10n, d.status),
                     style: GoogleFonts.hindSiliguri(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -179,11 +182,11 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
                       if (d.status == DoubtStatus.meetingScheduled)
                         PopupMenuItem(
                           value: 'join',
-                          child: Text('Meeting দেখুন', style: GoogleFonts.hindSiliguri()),
+                          child: Text(l10n.t('doubt_view_meeting'), style: GoogleFonts.hindSiliguri()),
                         ),
                       PopupMenuItem(
                         value: 'purge',
-                        child: Text('চ্যাট মুছুন', style: GoogleFonts.hindSiliguri()),
+                        child: Text(l10n.t('doubt_purge_chat'), style: GoogleFonts.hindSiliguri()),
                       ),
                     ],
                   ),
@@ -197,16 +200,16 @@ class _StudentDoubtsListScreenState extends State<StudentDoubtsListScreen> {
     );
   }
 
-  String _statusText(DoubtStatus s) {
+  String _statusText(AppLocalizations l10n, DoubtStatus s) {
     switch (s) {
       case DoubtStatus.open:
-        return 'খোলা';
+        return l10n.t('doubt_status_open');
       case DoubtStatus.inProgress:
-        return 'চ্যাট চলছে';
+        return l10n.t('doubt_status_in_progress');
       case DoubtStatus.meetingScheduled:
-        return 'Meeting scheduled';
+        return l10n.t('doubt_status_meeting');
       case DoubtStatus.solved:
-        return 'সমাধান হয়েছে';
+        return l10n.t('doubt_status_solved');
     }
   }
 }

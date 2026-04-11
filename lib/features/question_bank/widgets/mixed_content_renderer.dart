@@ -3,6 +3,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../../student/notes/note_markdown_style.dart';
+
 class MixedContentRenderer extends StatelessWidget {
   const MixedContentRenderer({
     super.key,
@@ -16,6 +18,7 @@ class MixedContentRenderer extends StatelessWidget {
     return MarkdownBody(
       data: content,
       selectable: false,
+      styleSheet: bengaliNoteMarkdownStyleSheet(context),
       builders: {
         'latex': LatexElementBuilder(),
       },

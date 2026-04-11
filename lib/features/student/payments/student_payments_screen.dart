@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../core/supabase_client.dart';
 import '../../../shared/models/payment_ledger_model.dart';
 import '../../../shared/models/payment_model.dart';
@@ -83,6 +84,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
         serviceName: p.paymentTypeCode,
       );
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
       await showModalBottomSheet<void>(
         context: context,
         builder: (ctx) => SafeArea(
@@ -91,7 +93,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.picture_as_pdf_outlined),
-                title: Text('ভাউচার দেখুন', style: GoogleFonts.hindSiliguri()),
+                title: Text(l10n.t('view_voucher'), style: GoogleFonts.hindSiliguri()),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await Printing.layoutPdf(
@@ -102,7 +104,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.share_outlined),
-                title: Text('শেয়ার করুন', style: GoogleFonts.hindSiliguri()),
+                title: Text(l10n.t('share_action'), style: GoogleFonts.hindSiliguri()),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await SharePlus.instance.share(
@@ -131,18 +133,31 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('payments'), style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction()],
       ),
       body: FutureBuilder<_PayBundle>(
         future: _future,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${l10n.t('load_failed')}: ${snap.error}',
+                  style: GoogleFonts.hindSiliguri(),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -164,15 +179,15 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: _SummaryCard(label: '✅ পরিশোধিত', value: fmt.format(paidTotal)),
+                    child: _SummaryCard(label: l10n.t('pay_summary_paid'), value: fmt.format(paidTotal)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: _SummaryCard(label: '🔴 বকেয়া', value: fmt.format(dueTotal)),
+                    child: _SummaryCard(label: l10n.t('pay_summary_due'), value: fmt.format(dueTotal)),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: _SummaryCard(label: '💚 এডভান্স', value: fmt.format(b.advanceAmount)),
+                    child: _SummaryCard(label: l10n.t('pay_summary_advance'), value: fmt.format(b.advanceAmount)),
                   ),
                 ],
               ),
@@ -184,24 +199,27 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('⚠️ বকেয়া পেমেন্ট', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                        Text(l10n.t('pay_due_alert_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 8),
                         Text(
                           '${latestDue.paymentTypeCode} — ${latestDue.forMonth == null ? '—' : DateFormat.yMMMM().format(latestDue.forMonth!)}',
                           style: GoogleFonts.hindSiliguri(),
                         ),
                         Text(
-                          'পরিমাণ: ${fmt.format(latestDue.remainingAmount > 0 ? latestDue.remainingAmount : latestDue.amount)}',
+                          '${l10n.t('amount_label')}: ${fmt.format(latestDue.remainingAmount > 0 ? latestDue.remainingAmount : latestDue.amount)}',
                           style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
                         ),
-                        Text('Due: ${DateFormat.yMMMd().format(latestDue.dueDate)}', style: GoogleFonts.nunito()),
+                        Text(
+                          '${l10n.t('due_date_label')}: ${DateFormat.yMMMd().format(latestDue.dueDate)}',
+                          style: GoogleFonts.nunito(),
+                        ),
                         const SizedBox(height: 8),
                         if (b.settings.acceptBkash && (b.settings.bkashNumber?.isNotEmpty ?? false))
                           Text('📱 bKash: ${b.settings.bkashNumber}', style: GoogleFonts.nunito()),
                         if (b.settings.acceptNagad && (b.settings.nagadNumber?.isNotEmpty ?? false))
                           Text('📱 Nagad: ${b.settings.nagadNumber}', style: GoogleFonts.nunito()),
                         if (b.settings.acceptCash)
-                          Text('💵 সরাসরি কোচিং সেন্টারে পেমেন্ট করুন', style: GoogleFonts.hindSiliguri()),
+                          Text(l10n.t('pay_cash_at_center'), style: GoogleFonts.hindSiliguri()),
                       ],
                     ),
                   ),
@@ -210,7 +228,7 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
               ],
               if (open.isNotEmpty) ...[
                 Text(
-                  'বকেয়া',
+                  l10n.t('dues_section'),
                   style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
@@ -231,12 +249,12 @@ class _StudentPaymentsScreenState extends State<StudentPaymentsScreen> {
                 const SizedBox(height: 24),
               ],
               Text(
-                'ইতিহাস',
+                l10n.t('payment_history'),
                 style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               if (b.ledger.isEmpty)
-                Text('কোনো পেমেন্ট নেই', style: GoogleFonts.hindSiliguri())
+                Text(l10n.t('no_payments_yet'), style: GoogleFonts.hindSiliguri())
               else
                 ...b.ledger.map(
                   (p) => ListTile(

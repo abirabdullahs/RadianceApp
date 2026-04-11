@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../core/supabase_client.dart';
 import '../../admin/students/repositories/student_repository.dart';
 import '../widgets/student_drawer.dart';
@@ -59,25 +60,38 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('উপস্থিতি', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('attendance'), style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction()],
       ),
       body: FutureBuilder<_AttendanceVm>(
         future: _future,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '${l10n.t('load_failed')}: ${snap.error}',
+                  style: GoogleFonts.hindSiliguri(),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           final vm = snap.data!;
           if (vm.courses.isEmpty) {
             return Center(
-              child: Text('তুমি এখনো কোনো কোর্সে এনরোলড নও', style: GoogleFonts.hindSiliguri()),
+              child: Text(l10n.t('att_not_enrolled'), style: GoogleFonts.hindSiliguri()),
             );
           }
 
@@ -103,14 +117,17 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                       child: DropdownButtonFormField<String>(
                         value: vm.selectedCourseId,
                         decoration: InputDecoration(
-                          labelText: 'কোর্স',
+                          labelText: l10n.t('courses'),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         items: vm.courses
                             .map(
                               (c) => DropdownMenuItem(
                                 value: c['id'],
-                                child: Text(c['name'] ?? 'Course', style: GoogleFonts.hindSiliguri()),
+                                child: Text(
+                                  c['name'] ?? l10n.t('course_fallback_name'),
+                                  style: GoogleFonts.hindSiliguri(),
+                                ),
                               ),
                             )
                             .toList(),
@@ -153,11 +170,11 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _statCard('মোট ক্লাস', '$total')),
+                    Expanded(child: _statCard(l10n.t('att_total_classes'), '$total')),
                     const SizedBox(width: 10),
-                    Expanded(child: _statCard('উপস্থিত', '$present')),
+                    Expanded(child: _statCard(l10n.t('att_present_label'), '$present')),
                     const SizedBox(width: 10),
-                    Expanded(child: _statCard('অনুপস্থিত', '$absent')),
+                    Expanded(child: _statCard(l10n.t('att_absent_label'), '$absent')),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -169,8 +186,8 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                       children: [
                         Text(
                           pct == null
-                              ? 'উপস্থিতির হার: —'
-                              : 'উপস্থিতির হার: ${pct.toStringAsFixed(1)}%',
+                              ? '${l10n.t('att_rate')}: —'
+                              : '${l10n.t('att_rate')}: ${pct.toStringAsFixed(1)}%',
                           style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
@@ -180,7 +197,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          (pct ?? 0) < 75 ? '⚠️ সতর্কতা! উপস্থিতি ৭৫%-এর নিচে।' : '🟢 নিয়মিত উপস্থিতি',
+                          (pct ?? 0) < 75 ? l10n.t('att_warn_below_75') : l10n.t('att_status_good'),
                           style: GoogleFonts.hindSiliguri(
                             color: (pct ?? 0) < 75 ? const Color(0xFFB91C1C) : const Color(0xFF15803D),
                             fontWeight: FontWeight.w600,
@@ -191,7 +208,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _AttendanceCalendar(month: _month, statusByDate: calendar),
+                _AttendanceCalendar(month: _month, statusByDate: calendar, l10n: l10n),
               ],
             ),
           );
@@ -230,10 +247,15 @@ class _AttendanceVm {
 }
 
 class _AttendanceCalendar extends StatelessWidget {
-  const _AttendanceCalendar({required this.month, required this.statusByDate});
+  const _AttendanceCalendar({
+    required this.month,
+    required this.statusByDate,
+    required this.l10n,
+  });
 
   final DateTime month;
   final Map<String, String> statusByDate;
+  final AppLocalizations l10n;
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +263,15 @@ class _AttendanceCalendar extends StatelessWidget {
     final firstWeekday = DateTime(month.year, month.month, 1).weekday % 7; // sun=0
     final cells = <Widget>[];
 
-    const labels = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
+    final labels = [
+      l10n.t('weekday_sun'),
+      l10n.t('weekday_mon'),
+      l10n.t('weekday_tue'),
+      l10n.t('weekday_wed'),
+      l10n.t('weekday_thu'),
+      l10n.t('weekday_fri'),
+      l10n.t('weekday_sat'),
+    ];
     for (final l in labels) {
       cells.add(Center(child: Text(l, style: GoogleFonts.hindSiliguri(fontSize: 11, fontWeight: FontWeight.w600))));
     }
@@ -272,7 +302,7 @@ class _AttendanceCalendar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('ক্যালেন্ডার ভিউ', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+            Text(l10n.t('att_calendar_title'), style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             GridView.count(
               crossAxisCount: 7,
@@ -281,7 +311,7 @@ class _AttendanceCalendar extends StatelessWidget {
               children: cells,
             ),
             const SizedBox(height: 8),
-            Text('🟢 ✅ উপস্থিত   🔴 ❌ অনুপস্থিত   ⚪ ক্লাস নেই', style: GoogleFonts.hindSiliguri(fontSize: 12)),
+            Text(l10n.t('att_legend'), style: GoogleFonts.hindSiliguri(fontSize: 12)),
           ],
         ),
       ),

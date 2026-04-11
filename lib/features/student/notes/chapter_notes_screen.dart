@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 import '../widgets/student_drawer.dart';
+import 'note_markdown_style.dart';
 import 'repositories/notes_repository.dart';
 
 class NotesScreen extends StatefulWidget {
@@ -321,6 +322,7 @@ class _LectureViewer extends StatelessWidget {
           MarkdownBody(
             data: text,
             selectable: true,
+            styleSheet: bengaliNoteMarkdownStyleSheet(context),
             extensionSet: md.ExtensionSet(
               md.ExtensionSet.gitHubFlavored.blockSyntaxes,
               <md.InlineSyntax>[LatexInlineSyntax()],
@@ -352,6 +354,7 @@ class _RichTextViewer extends StatelessWidget {
       child: MarkdownBody(
         data: text,
         selectable: true,
+        styleSheet: bengaliNoteMarkdownStyleSheet(context),
         extensionSet: md.ExtensionSet(
           md.ExtensionSet.gitHubFlavored.blockSyntaxes,
           <md.InlineSyntax>[LatexInlineSyntax()],

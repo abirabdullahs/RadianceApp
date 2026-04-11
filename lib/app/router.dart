@@ -120,6 +120,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AdminDashboardScreen(),
     ),
     GoRoute(
+      path: '/admin/notifications',
+      builder: (context, state) => const NotificationsScreen(useAdminShell: true),
+    ),
+    GoRoute(
       path: '/admin/courses',
       builder: (context, state) => const AdminCoursesScreen(),
     ),

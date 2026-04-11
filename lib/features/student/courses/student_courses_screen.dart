@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../app/i18n/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../../app/widgets/notification_app_bar_action.dart';
 import '../../../shared/models/course_model.dart';
@@ -42,13 +43,14 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       drawer: const StudentDrawer(),
       appBar: AppBar(
         leading: const AppBarDrawerLeading(),
         automaticallyImplyLeading: false,
         leadingWidth: leadingWidthForDrawer(context),
-        title: Text('আমার কোর্স', style: GoogleFonts.hindSiliguri()),
+        title: Text(l10n.t('my_courses'), style: GoogleFonts.hindSiliguri()),
         actions: const [AppBarDrawerAction(), NotificationAppBarAction()],
       ),
       body: FutureBuilder<List<_CourseTile>>(
@@ -60,7 +62,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
           final list = snap.data!;
           if (list.isEmpty) {
             return Center(
-              child: Text('কোনো কোর্স নেই', style: GoogleFonts.hindSiliguri()),
+              child: Text(l10n.t('no_courses_enrolled'), style: GoogleFonts.hindSiliguri()),
             );
           }
           return ListView.builder(
@@ -84,7 +86,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                       : Icon(Icons.school, size: 40, color: context.themePrimary),
                   title: Text(c.name, style: GoogleFonts.hindSiliguri()),
                   subtitle: Text(
-                    '৳${c.monthlyFee.toStringAsFixed(0)}/মাস',
+                    '৳${c.monthlyFee.toStringAsFixed(0)}${l10n.t('fee_per_month_suffix')}',
                     style: GoogleFonts.nunito(),
                   ),
                   onTap: () => context.push('/student/courses/${c.id}'),
