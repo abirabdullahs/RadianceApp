@@ -4,7 +4,6 @@ import 'package:flutter_markdown_latex/flutter_markdown_latex.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'dart:convert';
@@ -21,6 +20,7 @@ import '../../../admin/students/repositories/student_repository.dart';
 import '../../../../shared/models/user_model.dart';
 import '../repositories/exam_repository.dart';
 import '../services/result_calculator.dart';
+import '../../../../core/services/pdf_service.dart';
 
 final _examDetailProvider =
     FutureProvider.autoDispose.family<_ExamDetail, String>((ref, examId) async {
@@ -1049,27 +1049,14 @@ class _ExamDetailBodyState extends State<_ExamDetailBody> {
     String title,
     List<Map<String, dynamic>> rows,
   ) async {
-    final doc = pw.Document();
-    doc.addPage(
-      pw.MultiPage(
-        build: (context) => [
-          pw.Header(level: 0, child: pw.Text('Merit List: $title')),
-          pw.Table.fromTextArray(
-            headers: const ['Rank', 'Student', 'Score', 'Grade'],
-            data: rows.map((row) {
-              final user = Map<String, dynamic>.from(row['users'] as Map? ?? const {});
-              return [
-                '${row['rank'] ?? '-'}',
-                '${user['full_name_bn'] ?? 'Student'}',
-                row['is_absent'] == true ? 'Absent' : '${row['score']}/${row['total_marks']}',
-                row['is_absent'] == true ? '-' : '${row['grade'] ?? '-'}',
-              ];
-            }).toList(),
-          ),
-        ],
-      ),
+    final bytes = await buildExamMeritPdf(
+      examTitle: title,
+      rows: rows,
     );
-    await Printing.layoutPdf(onLayout: (_) => doc.save());
+    await Printing.layoutPdf(
+      onLayout: (_) async => bytes,
+      name: 'RCC-merit-$title.pdf',
+    );
   }
 }
 

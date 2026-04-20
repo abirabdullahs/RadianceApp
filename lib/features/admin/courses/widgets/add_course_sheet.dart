@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,8 +13,12 @@ import '../../../../shared/models/course_model.dart';
 import '../providers/courses_provider.dart';
 
 /// Modal bottom sheet: add course with [Form] validation and image preview.
+/// Pass [editingCourse] to update an existing course (same sheet).
 class AddCourseSheet extends ConsumerStatefulWidget {
-  const AddCourseSheet({super.key});
+  const AddCourseSheet({super.key, this.editingCourse});
+
+  /// When set, the sheet saves via [CourseRepository.updateCourse].
+  final CourseModel? editingCourse;
 
   @override
   ConsumerState<AddCourseSheet> createState() => _AddCourseSheetState();
@@ -26,8 +31,23 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
   final _feeController = TextEditingController();
 
   File? _imageFile;
+  bool _removeThumbnail = false;
   bool _active = true;
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.editingCourse;
+    if (e != null) {
+      _nameController.text = e.name;
+      _descController.text = e.description ?? '';
+      final f = e.monthlyFee;
+      _feeController.text =
+          f == f.roundToDouble() ? f.round().toString() : f.toString();
+      _active = e.isActive;
+    }
+  }
 
   @override
   void dispose() {
@@ -44,12 +64,20 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
       imageQuality: 85,
     );
     if (file != null) {
-      setState(() => _imageFile = File(file.path));
+      setState(() {
+        _imageFile = File(file.path);
+        _removeThumbnail = false;
+      });
     }
   }
 
   void _clearImage() {
-    setState(() => _imageFile = null);
+    setState(() {
+      _imageFile = null;
+      if (widget.editingCourse != null) {
+        _removeThumbnail = true;
+      }
+    });
   }
 
   Future<void> _onSubmit() async {
@@ -61,19 +89,37 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
     try {
       final fee = double.parse(_feeController.text.trim());
       final uid = supabaseClient.auth.currentUser?.id;
-      final course = CourseModel(
-        id: '00000000-0000-0000-0000-000000000001',
-        name: _nameController.text.trim(),
-        description: _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
-        thumbnailUrl: null,
-        monthlyFee: fee,
-        isActive: _active,
-        createdBy: uid,
-      );
+      final editing = widget.editingCourse;
+      if (editing != null) {
+        final updated = CourseModel(
+          id: editing.id,
+          name: _nameController.text.trim(),
+          description: _descController.text.trim().isEmpty
+              ? null
+              : _descController.text.trim(),
+          thumbnailUrl: _removeThumbnail ? null : editing.thumbnailUrl,
+          monthlyFee: fee,
+          isActive: _active,
+          createdBy: editing.createdBy,
+          createdAt: editing.createdAt,
+          updatedAt: editing.updatedAt,
+        );
+        await ref.read(courseRepositoryProvider).updateCourse(updated, _imageFile);
+      } else {
+        final course = CourseModel(
+          id: '00000000-0000-0000-0000-000000000001',
+          name: _nameController.text.trim(),
+          description: _descController.text.trim().isEmpty
+              ? null
+              : _descController.text.trim(),
+          thumbnailUrl: null,
+          monthlyFee: fee,
+          isActive: _active,
+          createdBy: uid,
+        );
 
-      await ref.read(courseRepositoryProvider).addCourse(course, _imageFile);
+        await ref.read(courseRepositoryProvider).addCourse(course, _imageFile);
+      }
 
       if (!mounted) return;
       ref.invalidate(coursesProvider);
@@ -117,7 +163,7 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'নতুন কোর্স',
+                    widget.editingCourse == null ? 'নতুন কোর্স' : 'কোর্স সম্পাদনা',
                     style: GoogleFonts.hindSiliguri(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -127,6 +173,9 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
                   const SizedBox(height: 16),
                   _ImagePickerBlock(
                     file: _imageFile,
+                    networkUrl: _removeThumbnail
+                        ? null
+                        : widget.editingCourse?.thumbnailUrl,
                     onPick: _pickImage,
                     onClear: _clearImage,
                     enabled: !_submitting,
@@ -249,12 +298,14 @@ class _AddCourseSheetState extends ConsumerState<AddCourseSheet> {
 class _ImagePickerBlock extends StatelessWidget {
   const _ImagePickerBlock({
     required this.file,
+    this.networkUrl,
     required this.onPick,
     required this.onClear,
     required this.enabled,
   });
 
   final File? file;
+  final String? networkUrl;
   final VoidCallback onPick;
   final VoidCallback onClear;
   final bool enabled;
@@ -293,7 +344,38 @@ class _ImagePickerBlock extends StatelessWidget {
                       ),
                     ],
                   )
-                : Material(
+                : (networkUrl != null && networkUrl!.isNotEmpty)
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: networkUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (_, _) => ColoredBox(
+                              color: scheme.surfaceContainerHighest,
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                            errorWidget: (_, _, _) => ColoredBox(
+                              color: scheme.surfaceContainerHighest,
+                              child: Icon(Icons.broken_image_outlined, color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Material(
+                              color: Colors.black54,
+                              shape: const CircleBorder(),
+                              child: IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white),
+                                onPressed: enabled ? onClear : null,
+                                tooltip: 'সরান',
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Material(
                     color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
                     child: InkWell(
                       onTap: enabled ? onPick : null,
@@ -318,7 +400,7 @@ class _ImagePickerBlock extends StatelessWidget {
                   ),
           ),
         ),
-        if (file != null) ...[
+        if (file != null || (networkUrl != null && networkUrl!.isNotEmpty)) ...[
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: enabled ? onPick : null,

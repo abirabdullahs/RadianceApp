@@ -81,6 +81,27 @@ class ResultRepository {
     return Map<String, dynamic>.from(row as Map);
   }
 
+  /// Admin: update a result row (e.g. score correction). Call [recalculateExamRanks] after.
+  Future<void> adminUpdateResult({
+    required String resultId,
+    required Map<String, dynamic> patch,
+  }) async {
+    await _client.from(kTableResults).update(patch).eq('id', resultId);
+  }
+
+  /// Admin: delete one result row. Call [recalculateExamRanks] after.
+  Future<void> adminDeleteResult(String resultId) async {
+    await _client.from(kTableResults).delete().eq('id', resultId);
+  }
+
+  /// Recompute [rank] for all published rows of [examId] (server RPC).
+  Future<void> recalculateExamRanks(String examId) async {
+    await _client.rpc<void>(
+      'calculate_exam_ranks',
+      params: <String, dynamic>{'p_exam_id': examId},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getMyPerformanceRecent({
     required String studentId,
     int limit = 10,

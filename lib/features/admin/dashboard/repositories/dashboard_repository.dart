@@ -586,25 +586,19 @@ class DashboardRepository {
     DateTime rangeStartUtc,
     DateTime rangeEndExclusiveUtc,
   ) async {
+    // PostgREST rejects `.select('amount_paid.sum()')` with PGRST123 in this context;
+    // sum client-side (monthly ledger volume is bounded).
     final rows = await _client
         .from(kTablePaymentLedger)
-        .select('amount_paid.sum()')
+        .select('amount_paid')
         .gte('paid_at', rangeStartUtc.toIso8601String())
         .lt('paid_at', rangeEndExclusiveUtc.toIso8601String());
-    return _firstNumericAggregate(rows);
-  }
-
-  static double _firstNumericAggregate(dynamic rows) {
-    final list = rows as List<dynamic>;
-    if (list.isEmpty) return 0;
-    final row = Map<String, dynamic>.from(list.first as Map);
-    for (final v in row.values) {
-      if (v == null) continue;
-      if (v is num) return v.toDouble();
-      final p = double.tryParse('$v');
-      if (p != null) return p;
+    var sum = 0.0;
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      sum += _parseAmount(m['amount_paid']);
     }
-    return 0;
+    return double.parse(sum.toStringAsFixed(2));
   }
 
   static DateTime? _parseDashboardDt(dynamic value) {

@@ -1,168 +1,131 @@
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../student_id_display.dart';
 import '../../shared/models/course_model.dart';
 import '../../shared/models/payment_model.dart';
 import '../../shared/models/user_model.dart';
 
-// ─── Color Palette ────────────────────────────────────────────────────────────
-// Deep Indigo (#1A237E) + Amber (#FFC107) modern scheme
-const _primary = PdfColor(0.102, 0.137, 0.494); // #1A237E
-const _accent  = PdfColor(1.000, 0.757, 0.027); // #FFC107
-const _surface = PdfColor(0.961, 0.961, 0.961); // #F5F5F5
-const _dark    = PdfColor(0.129, 0.129, 0.129); // #212121
-const _green   = PdfColor(0.161, 0.502, 0.275); // discount green
-const _yellow  = PdfColor(1.000, 1.000, 0.878); // note bg
+// ─── Institution constants ───────────────────────────────────────────────────
+const String kInstitutionName      = 'Radiance';
+const String kInstitutionTagline   = 'Coaching Center';
+const String kInstitutionAddress   =
+    'Ovijan 56, SSAC Road, Auchpara, Tongi, Gazipur';
+const String kInstitutionContact   = '01406-751374';
+
+// ─── Monochrome palette (printer-friendly — no solid fills) ──────────────────
+const PdfColor _ink    = PdfColors.black;
+const PdfColor _muted  = PdfColor(0.40, 0.40, 0.40);
+const PdfColor _hair   = PdfColor(0.75, 0.75, 0.75);
+
+/// Shared PDF font bundle — loaded once per export.
+class _PdfFonts {
+  _PdfFonts({
+    required this.sans,
+    required this.sansMedium,
+    required this.sansBold,
+  });
+
+  final pw.Font sans;
+  final pw.Font sansMedium;
+  final pw.Font sansBold;
+
+  pw.ThemeData buildTheme() => pw.ThemeData.withFont(
+        base: sans,
+        bold: sansBold,
+        italic: sans,
+        boldItalic: sansBold,
+      );
+}
+
+Future<_PdfFonts> _loadFonts() async {
+  // Poppins via Google Fonts — fetched/cached by the printing package.
+  final sans       = await PdfGoogleFonts.poppinsRegular();
+  final sansMedium = await PdfGoogleFonts.poppinsMedium();
+  final sansBold   = await PdfGoogleFonts.poppinsBold();
+  return _PdfFonts(sans: sans, sansMedium: sansMedium, sansBold: sansBold);
+}
 
 /// Generates printable PDF documents (payment vouchers).
-/// Supports Bengali text via HindSiliguri TTF, logo image, and modern layout.
-///
-/// ── Asset requirements (add to pubspec.yaml) ─────────────────────────────────
-///   flutter:
-///     assets:
-///       - assets/fonts/HindSiliguri-Regular.ttf
-///       - assets/fonts/HindSiliguri-Bold.ttf
-///       - assets/images/logo.png            # optional
-/// ─────────────────────────────────────────────────────────────────────────────
+/// Minimalist, monochrome, printer-friendly A5 — Poppins, Latin only.
 class PdfService {
   PdfService();
 
-  /// Generates a modern A5 payment voucher as PDF bytes.
+  /// Generates a minimalist black & white A5 payment voucher as PDF bytes.
   ///
-  /// Parameters:
-  ///   [payment]            — core payment data
-  ///   [student]            — student model (supports both EN and BN name)
-  ///   [course]             — course model
-  ///   [serviceName]        — optional service label (e.g. "Monthly Tuition")
-  ///   [logoBytes]          — optional PNG/JPEG logo bytes from assets or network
-  ///   [institutionAddress] — optional address line shown in header
-  ///   [institutionPhone]   — optional contact shown in header
-  ///   [footerNote]         — custom footer text (overrides default)
-  ///   [batchName]          — NEW: student's batch / academic session
-  ///   [guardianName]       — NEW: parent / guardian name
+  /// Backward-compatible signature: [logoBytes], [institutionAddress],
+  /// [institutionPhone], [footerNote] are accepted but the minimalist design
+  /// uses the hardcoded institution header by default.
   Future<Uint8List> generateVoucherPdf(
     PaymentModel payment,
     UserModel student,
     CourseModel course, {
     String? serviceName,
-    Uint8List? logoBytes,
+    Uint8List? logoBytes, // accepted for API compat; not rendered
     String? institutionAddress,
     String? institutionPhone,
     String? footerNote,
-    String? batchName,       // NEW field
-    String? guardianName,    // NEW field
+    String? batchName,
+    String? guardianName,
   }) async {
-    // ── Bengali font (Hind Siliguri) ─────────────────────────────────────────
-    final bnRegData  = await rootBundle.load('assets/fonts/HindSiliguri-Regular.ttf');
-    final bnBoldData = await rootBundle.load('assets/fonts/HindSiliguri-Bold.ttf');
-    final bnFont     = pw.Font.ttf(bnRegData);
-    final bnBold     = pw.Font.ttf(bnBoldData);
+    final fonts = await _loadFonts();
 
-    // ── Data prep ────────────────────────────────────────────────────────────
     final paidDate   = payment.paidAt ?? DateTime.now();
     final monthLabel = _fmtMonth(payment.forMonth);
     final method     = payment.paymentMethod?.name ?? '—';
     final total      = payment.amount;
     final inWords    = _amountInWordsTaka(total);
-    final svc        = serviceName?.trim().isNotEmpty == true ? serviceName!.trim() : '—';
+    final svc        = (serviceName?.trim().isNotEmpty ?? false)
+        ? serviceName!.trim()
+        : '—';
 
-    final nameEn = student.fullNameEn?.trim().isNotEmpty == true
-        ? student.fullNameEn!.trim()
-        : null;
-    final nameBn = student.fullNameBn;
+    final displayName = _pickLatinName(student);
 
-    pw.ImageProvider? logo;
-    if (logoBytes != null) logo = pw.MemoryImage(logoBytes);
+    final address = (institutionAddress?.trim().isNotEmpty ?? false)
+        ? institutionAddress!.trim()
+        : kInstitutionAddress;
+    final phone   = (institutionPhone?.trim().isNotEmpty ?? false)
+        ? institutionPhone!.trim()
+        : kInstitutionContact;
 
-    // ── Build document ───────────────────────────────────────────────────────
-    final doc = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: pw.Font.helvetica(),
-        bold: pw.Font.helveticaBold(),
-      ),
-    );
+    final doc = pw.Document(theme: fonts.buildTheme());
 
     doc.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a5,
-        margin: pw.EdgeInsets.zero,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 22),
         build: (_) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // ── 1. Header ──────────────────────────────────────────────────
-            _buildHeader(
-              logo: logo,
-              bnFont: bnFont,
-              bnBold: bnBold,
-              address: institutionAddress,
-              phone: institutionPhone,
+            _buildHeader(fonts, address: address, phone: phone),
+            pw.SizedBox(height: 16),
+            _buildTitleRow(fonts, payment.voucherNo, paidDate),
+            pw.SizedBox(height: 14),
+            _buildInfoGrid(
+              fonts,
+              studentName: displayName,
+              studentId: displayStudentIdForUser(student),
+              studentPhone: student.phone,
+              guardianName: guardianName,
+              batchName: batchName,
+              courseName: course.name,
+              serviceName: svc,
+              billingMonth: monthLabel,
+              method: method,
             ),
-
-            // ── 2. Title / meta strip ──────────────────────────────────────
-            _buildTitleStrip(payment.voucherNo, paidDate),
-
-            // ── 3. Body ────────────────────────────────────────────────────
-            pw.Expanded(
-              child: pw.Padding(
-                padding: const pw.EdgeInsets.fromLTRB(20, 14, 20, 14),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                  children: [
-                    // Two-column info cards
-                    pw.Row(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Expanded(
-                          child: _buildCard('STUDENT INFO', [
-                            _field('Name (EN)', nameEn ?? '—'),
-                            _fieldBn('Name (BN)', nameBn, bnFont),
-                            _field('Student ID', displayStudentIdForUser(student)),
-                            _field('Phone', student.phone),
-                            if (guardianName?.trim().isNotEmpty == true)
-                              _field('Guardian', guardianName!.trim()),
-                            if (batchName?.trim().isNotEmpty == true)
-                              _field('Batch / Session', batchName!.trim()),
-                          ]),
-                        ),
-                        pw.SizedBox(width: 10),
-                        pw.Expanded(
-                          child: _buildCard('PAYMENT INFO', [
-                            _field('Course', course.name),
-                            _field('Service', svc),
-                            _field('Billing Month', monthLabel),
-                            _field('Payment Method', method),
-                            _field('Payment Status', 'PAID'),
-                          ]),
-                        ),
-                      ],
-                    ),
-
-                    pw.SizedBox(height: 12),
-
-                    // Amount table
-                    _buildAmountTable(payment, total, inWords),
-
-                    // Note box (if any)
-                    if (payment.note?.trim().isNotEmpty == true) ...[
-                      pw.SizedBox(height: 10),
-                      _buildNoteBox(payment.note!.trim()),
-                    ],
-
-                    pw.Spacer(),
-
-                    // Signature row
-                    _buildSignatures(),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── 4. Footer ──────────────────────────────────────────────────
-            _buildFooter(footerNote),
+            pw.SizedBox(height: 14),
+            _buildAmountTable(fonts, payment, total, inWords),
+            if (payment.note?.trim().isNotEmpty ?? false) ...[
+              pw.SizedBox(height: 12),
+              _buildNoteBox(fonts, payment.note!.trim()),
+            ],
+            pw.Spacer(),
+            _buildSignatures(fonts),
+            pw.SizedBox(height: 10),
+            _buildFooter(fonts, footerNote),
           ],
         ),
       ),
@@ -172,308 +135,358 @@ class PdfService {
   }
 }
 
-// ─── Header ───────────────────────────────────────────────────────────────────
+// ─── Header ──────────────────────────────────────────────────────────────────
 
-pw.Widget _buildHeader({
-  required pw.ImageProvider? logo,
-  required pw.Font bnFont,
-  required pw.Font bnBold,
-  String? address,
-  String? phone,
+pw.Widget _buildHeader(
+  _PdfFonts f, {
+  required String address,
+  required String phone,
 }) {
-  return pw.Container(
-    color: _primary,
-    padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-    child: pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
-      children: [
-        // Logo / monogram box
-        pw.Container(
-          width: 52,
-          height: 52,
-          decoration: pw.BoxDecoration(
-            color: PdfColors.white,
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          alignment: pw.Alignment.center,
-          child: logo != null
-              ? pw.Padding(
-                  padding: const pw.EdgeInsets.all(4),
-                  child: pw.Image(logo, fit: pw.BoxFit.contain),
-                )
-              : pw.Text(
-                  'R',
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  kInstitutionName.toUpperCase(),
                   style: pw.TextStyle(
-                    fontSize: 28,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _primary,
+                    font: f.sansBold,
+                    fontSize: 22,
+                    letterSpacing: 3,
+                    color: _ink,
                   ),
                 ),
-        ),
-        pw.SizedBox(width: 14),
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  kInstitutionTagline,
+                  style: pw.TextStyle(
+                    font: f.sans,
+                    fontSize: 9,
+                    letterSpacing: 2,
+                    color: _muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                address,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: f.sans,
+                  fontSize: 7.5,
+                  color: _muted,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Contact  $phone',
+                style: pw.TextStyle(
+                  font: f.sansMedium,
+                  fontSize: 7.5,
+                  color: _ink,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      pw.SizedBox(height: 10),
+      pw.Container(height: 0.8, color: _ink),
+      pw.SizedBox(height: 1.5),
+      pw.Container(height: 0.4, color: _ink),
+    ],
+  );
+}
 
-        // Institute name block
-        pw.Column(
+// ─── Title row ───────────────────────────────────────────────────────────────
+
+pw.Widget _buildTitleRow(_PdfFonts f, String voucherNo, DateTime date) {
+  return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
+    children: [
+      pw.Expanded(
+        child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(
-              'RADIANCE COACHING CENTER',
+              'PAYMENT RECEIPT',
               style: pw.TextStyle(
-                fontSize: 13,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
+                font: f.sansBold,
+                fontSize: 14,
+                letterSpacing: 4,
+                color: _ink,
               ),
             ),
-            pw.SizedBox(height: 3),
+            pw.SizedBox(height: 2),
             pw.Text(
-              'রেডিয়েন্স কোচিং সেন্টার',
+              'Issued upon receipt of payment',
               style: pw.TextStyle(
-                fontSize: 9,
-                color: _accent,
-                font: bnFont,
+                font: f.sans,
+                fontSize: 8,
+                color: _muted,
               ),
             ),
-            pw.SizedBox(height: 3),
-            if (address != null && address.isNotEmpty)
-              pw.Text(
-                address,
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.white),
-              ),
-            if (phone != null && phone.isNotEmpty)
-              pw.Text(
-                'Phone: $phone',
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.white),
-              ),
           ],
         ),
-      ],
-    ),
+      ),
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.end,
+        children: [
+          _metaLine(f, 'Voucher', voucherNo),
+          pw.SizedBox(height: 2),
+          _metaLine(f, 'Date', _fmtDate(date)),
+        ],
+      ),
+    ],
   );
 }
 
-// ─── Title strip ──────────────────────────────────────────────────────────────
-
-pw.Widget _buildTitleStrip(String voucherNo, DateTime date) {
-  return pw.Container(
-    color: _accent,
-    padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 7),
-    child: pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      children: [
-        pw.Text(
-          'PAYMENT RECEIPT',
-          style: pw.TextStyle(
-            fontSize: 10,
-            fontWeight: pw.FontWeight.bold,
-            color: _dark,
-          ),
+pw.Widget _metaLine(_PdfFonts f, String label, String value) {
+  return pw.Row(
+    mainAxisSize: pw.MainAxisSize.min,
+    children: [
+      pw.Text(
+        '${label.toUpperCase()}  ',
+        style: pw.TextStyle(
+          font: f.sans,
+          fontSize: 7,
+          letterSpacing: 1.5,
+          color: _muted,
         ),
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
+      ),
+      pw.Text(
+        value,
+        style: pw.TextStyle(
+          font: f.sansBold,
+          fontSize: 10,
+          color: _ink,
+        ),
+      ),
+    ],
+  );
+}
+
+// ─── Info grid ───────────────────────────────────────────────────────────────
+
+pw.Widget _buildInfoGrid(
+  _PdfFonts f, {
+  required String studentName,
+  required String studentId,
+  required String studentPhone,
+  required String? guardianName,
+  required String? batchName,
+  required String courseName,
+  required String serviceName,
+  required String billingMonth,
+  required String method,
+}) {
+  return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Expanded(
+        child: _sectionBlock(
+          f,
+          title: 'Bill To',
           children: [
-            pw.Text(
-              'Voucher #$voucherNo',
-              style: pw.TextStyle(
-                fontSize: 8.5,
-                fontWeight: pw.FontWeight.bold,
-                color: _dark,
-              ),
-            ),
-            pw.Text(
-              'Date: ${_fmtDate(date)}',
-              style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.black),
-            ),
+            _kv(f, 'Name', studentName),
+            _kv(f, 'Student ID', studentId),
+            _kv(f, 'Phone', studentPhone),
+            if (guardianName?.trim().isNotEmpty ?? false)
+              _kv(f, 'Guardian', guardianName!.trim()),
+            if (batchName?.trim().isNotEmpty ?? false)
+              _kv(f, 'Batch', batchName!.trim()),
           ],
         ),
-      ],
-    ),
+      ),
+      pw.SizedBox(width: 16),
+      pw.Expanded(
+        child: _sectionBlock(
+          f,
+          title: 'Payment Details',
+          children: [
+            _kv(f, 'Course', courseName),
+            _kv(f, 'Service', serviceName),
+            _kv(f, 'Billing Month', billingMonth),
+            _kv(f, 'Method', method),
+            _kv(f, 'Status', 'PAID'),
+          ],
+        ),
+      ),
+    ],
   );
 }
 
-// ─── Info card ────────────────────────────────────────────────────────────────
+pw.Widget _sectionBlock(
+  _PdfFonts f, {
+  required String title,
+  required List<pw.Widget> children,
+}) {
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Text(
+        title.toUpperCase(),
+        style: pw.TextStyle(
+          font: f.sansBold,
+          fontSize: 7.5,
+          letterSpacing: 2,
+          color: _ink,
+        ),
+      ),
+      pw.SizedBox(height: 3),
+      pw.Container(height: 0.6, color: _ink),
+      pw.SizedBox(height: 6),
+      ...children,
+    ],
+  );
+}
 
-pw.Widget _buildCard(String title, List<pw.Widget> fields) {
-  return pw.Container(
-    decoration: pw.BoxDecoration(
-      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-      borderRadius: pw.BorderRadius.circular(5),
-    ),
-    child: pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+pw.Widget _kv(_PdfFonts f, String label, String value) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.only(bottom: 5),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // Card header
-        pw.Container(
-          decoration: pw.BoxDecoration(
-            color: _primary,
-            borderRadius: pw.BorderRadius.only(
-              topLeft: const pw.Radius.circular(5),
-              topRight: const pw.Radius.circular(5),
-            ),
-          ),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        pw.SizedBox(
+          width: 70,
           child: pw.Text(
-            title,
+            label,
             style: pw.TextStyle(
-              fontSize: 6.5,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.white,
+              font: f.sans,
+              fontSize: 8,
+              color: _muted,
             ),
           ),
         ),
-        // Card body
-        pw.Padding(
-          padding: const pw.EdgeInsets.all(9),
-          child: pw.Column(children: fields),
+        pw.Expanded(
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              font: f.sansMedium,
+              fontSize: 9,
+              color: _ink,
+            ),
+          ),
         ),
       ],
     ),
   );
 }
 
-// ─── Field widgets ────────────────────────────────────────────────────────────
+// ─── Amount table ────────────────────────────────────────────────────────────
 
-/// Latin/English field
-pw.Widget _field(String label, String value) {
-  return pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 6),
-    child: pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          label.toUpperCase(),
-          style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600),
-        ),
-        pw.SizedBox(height: 1),
-        pw.Text(value, style: const pw.TextStyle(fontSize: 8.5)),
-      ],
-    ),
-  );
-}
-
-/// Bengali field — uses TTF font
-pw.Widget _fieldBn(String label, String value, pw.Font font) {
-  return pw.Padding(
-    padding: const pw.EdgeInsets.only(bottom: 6),
-    child: pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(
-          label.toUpperCase(),
-          style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600),
-        ),
-        pw.SizedBox(height: 1),
-        pw.Text(value, style: pw.TextStyle(fontSize: 8.5, font: font)),
-      ],
-    ),
-  );
-}
-
-// ─── Amount table ─────────────────────────────────────────────────────────────
-
-pw.Widget _buildAmountTable(PaymentModel payment, double total, String words) {
+pw.Widget _buildAmountTable(
+  _PdfFonts f,
+  PaymentModel payment,
+  double total,
+  String words,
+) {
   return pw.Container(
     decoration: pw.BoxDecoration(
-      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-      borderRadius: pw.BorderRadius.circular(5),
+      border: pw.Border.all(color: _ink, width: 0.6),
     ),
     child: pw.Column(
       children: [
-        // Table header
+        // Header
         pw.Container(
-          decoration: pw.BoxDecoration(
-            color: _primary,
-            borderRadius: pw.BorderRadius.only(
-              topLeft: const pw.Radius.circular(5),
-              topRight: const pw.Radius.circular(5),
-            ),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(bottom: pw.BorderSide(color: _ink, width: 0.6)),
           ),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text(
                 'DESCRIPTION',
                 style: pw.TextStyle(
-                  fontSize: 6.5,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
+                  font: f.sansBold,
+                  fontSize: 7.5,
+                  letterSpacing: 2,
+                  color: _ink,
                 ),
               ),
               pw.Text(
                 'AMOUNT',
                 style: pw.TextStyle(
-                  fontSize: 6.5,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
+                  font: f.sansBold,
+                  fontSize: 7.5,
+                  letterSpacing: 2,
+                  color: _ink,
                 ),
               ),
             ],
           ),
         ),
-
-        // Subtotal row
-        _tableRow(
-          'Course Fee (Subtotal)',
-          '৳ ${payment.subtotal.toStringAsFixed(2)}',
-          shade: false,
-        ),
-
-        // Discount row (conditional)
+        _amountRow(f, 'Course Fee (Subtotal)', _money(payment.subtotal)),
         if (payment.discount > 0)
-          _tableRow(
+          _amountRow(
+            f,
             'Discount Applied',
-            '− ৳ ${payment.discount.toStringAsFixed(2)}',
-            shade: true,
-            isDiscount: true,
+            '- ${_money(payment.discount)}',
+            muted: true,
           ),
-
-        // Grand total (accent highlight)
+        // Total row — double-line top border for emphasis, no fill (printer friendly)
         pw.Container(
-          color: _accent,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: _ink, width: 0.6),
+            ),
+          ),
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text(
-                'GRAND TOTAL',
+                'TOTAL PAID',
                 style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: _dark,
+                  font: f.sansBold,
+                  fontSize: 10,
+                  letterSpacing: 3,
+                  color: _ink,
                 ),
               ),
               pw.Text(
-                '৳ ${total.toStringAsFixed(2)}',
+                _money(total),
                 style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: _dark,
+                  font: f.sansBold,
+                  fontSize: 14,
+                  color: _ink,
                 ),
               ),
             ],
           ),
         ),
-
-        // Amount in words
+        // Separator (thin + hairline — double-rule look, no fill)
+        pw.Container(height: 0.4, color: _ink),
         pw.Container(
-          color: _surface,
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: pw.RichText(
             text: pw.TextSpan(
               children: [
                 pw.TextSpan(
-                  text: 'In Words: ',
+                  text: 'In Words:  ',
                   style: pw.TextStyle(
+                    font: f.sansBold,
                     fontSize: 7.5,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey700,
+                    letterSpacing: 1.5,
+                    color: _muted,
                   ),
                 ),
                 pw.TextSpan(
                   text: words,
                   style: pw.TextStyle(
-                    fontSize: 7.5,
-                    fontStyle: pw.FontStyle.italic,
+                    font: f.sansMedium,
+                    fontSize: 8.5,
+                    color: _ink,
                   ),
                 ),
               ],
@@ -485,24 +498,34 @@ pw.Widget _buildAmountTable(PaymentModel payment, double total, String words) {
   );
 }
 
-pw.Widget _tableRow(
+pw.Widget _amountRow(
+  _PdfFonts f,
   String label,
   String value, {
-  bool shade = false,
-  bool isDiscount = false,
+  bool muted = false,
 }) {
   return pw.Container(
-    color: shade ? _surface : PdfColors.white,
-    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: const pw.BoxDecoration(
+      border: pw.Border(bottom: pw.BorderSide(color: _hair, width: 0.4)),
+    ),
     child: pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
-        pw.Text(label, style: const pw.TextStyle(fontSize: 8.5)),
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            font: f.sans,
+            fontSize: 9,
+            color: _ink,
+          ),
+        ),
         pw.Text(
           value,
           style: pw.TextStyle(
-            fontSize: 8.5,
-            color: isDiscount ? _green : _dark,
+            font: f.sansMedium,
+            fontSize: 9,
+            color: muted ? _muted : _ink,
           ),
         ),
       ],
@@ -510,30 +533,33 @@ pw.Widget _tableRow(
   );
 }
 
-// ─── Note box ─────────────────────────────────────────────────────────────────
+// ─── Note box ────────────────────────────────────────────────────────────────
 
-pw.Widget _buildNoteBox(String note) {
+pw.Widget _buildNoteBox(_PdfFonts f, String note) {
   return pw.Container(
     decoration: const pw.BoxDecoration(
-      color: _yellow,
-      border: pw.Border(
-        left: pw.BorderSide(color: _accent, width: 3),
-      ),
+      border: pw.Border(left: pw.BorderSide(color: _ink, width: 2)),
     ),
-    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    padding: const pw.EdgeInsets.fromLTRB(10, 4, 10, 4),
     child: pw.RichText(
       text: pw.TextSpan(
         children: [
           pw.TextSpan(
-            text: 'Note: ',
+            text: 'Note  ',
             style: pw.TextStyle(
-              fontSize: 8,
-              fontWeight: pw.FontWeight.bold,
+              font: f.sansBold,
+              fontSize: 7.5,
+              letterSpacing: 1.5,
+              color: _muted,
             ),
           ),
           pw.TextSpan(
             text: note,
-            style: const pw.TextStyle(fontSize: 8),
+            style: pw.TextStyle(
+              font: f.sans,
+              fontSize: 8.5,
+              color: _ink,
+            ),
           ),
         ],
       ),
@@ -541,55 +567,77 @@ pw.Widget _buildNoteBox(String note) {
   );
 }
 
-// ─── Signatures ───────────────────────────────────────────────────────────────
+// ─── Signatures ──────────────────────────────────────────────────────────────
 
-pw.Widget _buildSignatures() {
-  return pw.Padding(
-    padding: const pw.EdgeInsets.only(top: 4),
-    child: pw.Row(
-      children: [
-        _sigBlock("Student's Signature"),
-        pw.SizedBox(width: 30),
-        _sigBlock('Authorized Signature & Stamp'),
-      ],
-    ),
+pw.Widget _buildSignatures(_PdfFonts f) {
+  return pw.Row(
+    children: [
+      _sigBlock(f, "Student's Signature"),
+      pw.SizedBox(width: 24),
+      _sigBlock(f, 'Authorized Signature & Stamp'),
+    ],
   );
 }
 
-pw.Widget _sigBlock(String label) {
+pw.Widget _sigBlock(_PdfFonts f, String label) {
   return pw.Expanded(
     child: pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.SizedBox(height: 22),
-        pw.Container(height: 0.5, color: PdfColors.grey500),
-        pw.SizedBox(height: 4),
+        pw.SizedBox(height: 26),
+        pw.Container(height: 0.5, color: _ink),
+        pw.SizedBox(height: 3),
         pw.Text(
           label,
-          style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+          style: pw.TextStyle(
+            font: f.sans,
+            fontSize: 7.5,
+            color: _muted,
+          ),
         ),
       ],
     ),
   );
 }
 
-// ─── Footer ───────────────────────────────────────────────────────────────────
+// ─── Footer ──────────────────────────────────────────────────────────────────
 
-pw.Widget _buildFooter(String? note) {
-  return pw.Container(
-    color: _primary,
-    padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-    child: pw.Text(
-      note ??
-          'Thank you for choosing Radiance Coaching Center. '
-              'This is a computer-generated receipt.',
-      textAlign: pw.TextAlign.center,
-      style: const pw.TextStyle(fontSize: 7, color: PdfColors.white),
-    ),
+pw.Widget _buildFooter(_PdfFonts f, String? note) {
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Container(height: 0.4, color: _hair),
+      pw.SizedBox(height: 6),
+      pw.Text(
+        note ??
+            'Thank you for choosing Radiance Coaching Center.  '
+                'This is a computer-generated receipt and does not require a wet signature.',
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(
+          font: f.sans,
+          fontSize: 7,
+          color: _muted,
+        ),
+      ),
+    ],
   );
 }
 
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Latin-only money format. Uses "Tk" to stay within Poppins glyph coverage.
+String _money(double v) => 'Tk ${v.toStringAsFixed(2)}';
+
+/// Picks a Latin-script display name for the student.
+/// Falls back to a generic label if no English name is available so that
+/// non-Latin glyphs never appear on the voucher.
+String _pickLatinName(UserModel u) {
+  final en = u.fullNameEn?.trim();
+  if (en != null && en.isNotEmpty) return en;
+  final id = u.studentId?.trim();
+  if (id != null && id.isNotEmpty) return 'Student $id';
+  return 'Student';
+}
 
 String _fmtDate(DateTime d) {
   final l = d.toLocal();
@@ -633,4 +681,174 @@ String _toWords(int n) {
   if (n < 1000000)  return '${_toWords(n ~/ 1000)} Thousand${n % 1000 != 0 ? ' ${_toWords(n % 1000)}' : ''}';
   if (n < 1000000000) return '${_toWords(n ~/ 1000000)} Million${n % 1000000 != 0 ? ' ${_toWords(n % 1000000)}' : ''}';
   return n.toString();
+}
+
+// ─── Exam leaderboard / merit list PDF ───────────────────────────────────────
+
+/// Builds a minimalist, monochrome A5 merit-list PDF matching the voucher style.
+/// Used by the admin exam detail screen. Latin-only — no Bangla glyphs.
+Future<Uint8List> buildExamMeritPdf({
+  required String examTitle,
+  required List<Map<String, dynamic>> rows,
+  DateTime? generatedAt,
+}) async {
+  final fonts = await _loadFonts();
+  final when  = generatedAt ?? DateTime.now();
+
+  final doc = pw.Document(theme: fonts.buildTheme());
+
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a5,
+      margin: const pw.EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+      header: (ctx) => ctx.pageNumber == 1
+          ? pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 14),
+              child: _buildHeader(
+                fonts,
+                address: kInstitutionAddress,
+                phone: kInstitutionContact,
+              ),
+            )
+          : pw.SizedBox.shrink(),
+      footer: (ctx) => pw.Padding(
+        padding: const pw.EdgeInsets.only(top: 10),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              'Generated ${_fmtDate(when)}',
+              style: pw.TextStyle(font: fonts.sans, fontSize: 7, color: _muted),
+            ),
+            pw.Text(
+              'Page ${ctx.pageNumber} / ${ctx.pagesCount}',
+              style: pw.TextStyle(font: fonts.sans, fontSize: 7, color: _muted),
+            ),
+          ],
+        ),
+      ),
+      build: (_) => [
+        _buildMeritTitle(fonts, examTitle, when),
+        pw.SizedBox(height: 12),
+        _meritTable(fonts, rows),
+      ],
+    ),
+  );
+
+  return doc.save();
+}
+
+pw.Widget _buildMeritTitle(_PdfFonts f, String examTitle, DateTime when) {
+  return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
+    children: [
+      pw.Expanded(
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'MERIT LIST',
+              style: pw.TextStyle(
+                font: f.sansBold,
+                fontSize: 14,
+                letterSpacing: 4,
+                color: _ink,
+              ),
+            ),
+            pw.SizedBox(height: 3),
+            pw.Text(
+              examTitle,
+              style: pw.TextStyle(
+                font: f.sansMedium,
+                fontSize: 10,
+                color: _ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+      _metaLine(f, 'Date', _fmtDate(when)),
+    ],
+  );
+}
+
+pw.Widget _meritTable(_PdfFonts f, List<Map<String, dynamic>> rows) {
+  final headerStyle = pw.TextStyle(
+    font: f.sansBold,
+    fontSize: 7.5,
+    letterSpacing: 2,
+    color: _ink,
+  );
+  final cellStyle = pw.TextStyle(
+    font: f.sans,
+    fontSize: 9,
+    color: _ink,
+  );
+
+  pw.Widget cell(
+    String text, {
+    pw.TextStyle? style,
+    pw.Alignment align = pw.Alignment.centerLeft,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      alignment: align,
+      child: pw.Text(text, style: style ?? cellStyle),
+    );
+  }
+
+  final headerRow = pw.TableRow(
+    decoration: const pw.BoxDecoration(
+      border: pw.Border(bottom: pw.BorderSide(color: _ink, width: 0.8)),
+    ),
+    children: [
+      cell('RANK', style: headerStyle, align: pw.Alignment.center),
+      cell('STUDENT', style: headerStyle),
+      cell('ID', style: headerStyle, align: pw.Alignment.center),
+      cell('SCORE', style: headerStyle, align: pw.Alignment.centerRight),
+      cell('GRADE', style: headerStyle, align: pw.Alignment.center),
+    ],
+  );
+
+  final bodyRows = rows.map((row) {
+    final user = Map<String, dynamic>.from(row['users'] as Map? ?? const {});
+    final isAbsent = row['is_absent'] == true;
+    final nameEn = (user['full_name_en'] as String?)?.trim();
+    final sid = (user['student_id'] as String?)?.trim();
+    final phone = (user['phone'] as String?)?.trim();
+    final name = (nameEn != null && nameEn.isNotEmpty)
+        ? nameEn
+        : (sid != null && sid.isNotEmpty
+            ? 'Student $sid'
+            : (phone != null && phone.isNotEmpty ? 'Student $phone' : 'Student'));
+    final score = isAbsent
+        ? 'Absent'
+        : '${row['score'] ?? 0} / ${row['total_marks'] ?? '-'}';
+    final grade = isAbsent ? '-' : '${row['grade'] ?? '-'}';
+    final rank  = '${row['rank'] ?? '-'}';
+    return pw.TableRow(
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(color: _hair, width: 0.3)),
+      ),
+      children: [
+        cell(rank, align: pw.Alignment.center),
+        cell(name),
+        cell(sid ?? '-', align: pw.Alignment.center),
+        cell(score, align: pw.Alignment.centerRight),
+        cell(grade, align: pw.Alignment.center),
+      ],
+    );
+  });
+
+  return pw.Table(
+    border: pw.TableBorder.all(color: _ink, width: 0.6),
+    columnWidths: const {
+      0: pw.FixedColumnWidth(34),
+      1: pw.FlexColumnWidth(3),
+      2: pw.FixedColumnWidth(56),
+      3: pw.FixedColumnWidth(60),
+      4: pw.FixedColumnWidth(40),
+    },
+    children: [headerRow, ...bodyRows],
+  );
 }

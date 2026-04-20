@@ -1,31 +1,40 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../providers/courses_provider.dart';
 import '../repositories/course_repository.dart';
+import '../widgets/add_course_sheet.dart';
 import '../widgets/admin_course_syllabus_tab.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/course_model.dart';
 
 /// Admin: course summary + syllabus (subjects → chapters → lectures & suggestions).
-class AdminCourseDetailScreen extends StatefulWidget {
+class AdminCourseDetailScreen extends ConsumerStatefulWidget {
   const AdminCourseDetailScreen({super.key, required this.courseId});
 
   final String courseId;
 
   @override
-  State<AdminCourseDetailScreen> createState() => _AdminCourseDetailScreenState();
+  ConsumerState<AdminCourseDetailScreen> createState() => _AdminCourseDetailScreenState();
 }
 
-class _AdminCourseDetailScreenState extends State<AdminCourseDetailScreen> {
+class _AdminCourseDetailScreenState extends ConsumerState<AdminCourseDetailScreen> {
   late Future<CourseModel> _future;
 
   @override
   void initState() {
     super.initState();
     _future = CourseRepository().getCourseById(widget.courseId);
+  }
+
+  void _reloadCourse() {
+    setState(() {
+      _future = CourseRepository().getCourseById(widget.courseId);
+    });
   }
 
   @override
@@ -74,7 +83,64 @@ class _AdminCourseDetailScreenState extends State<AdminCourseDetailScreen> {
             ),
             body: TabBarView(
               children: [
-                _CourseOverviewBody(course: c),
+                _CourseOverviewBody(
+                  course: c,
+                  onEdit: () async {
+                    final ok = await showModalBottomSheet<bool>(
+                      context: context,
+                      isScrollControlled: true,
+                      showDragHandle: true,
+                      builder: (ctx) => AddCourseSheet(editingCourse: c),
+                    );
+                    if (!mounted) return;
+                    if (ok == true) {
+                      ref.invalidate(coursesProvider);
+                      _reloadCourse();
+                    }
+                  },
+                  onDelete: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(
+                          'কোর্স মুছবেন?',
+                          style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700),
+                        ),
+                        content: Text(
+                          'নিশ্চিত করলে এই কোর্স মুছে ফেলার চেষ্টা করা হবে। অন্য টেবিলে যুক্ত থাকলে ডাটাবেস ত্রুটি দেখতে পারেন।',
+                          style: GoogleFonts.hindSiliguri(),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: Text('বাতিল', style: GoogleFonts.hindSiliguri()),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: Text('মুছুন', style: GoogleFonts.hindSiliguri()),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true || !mounted) return;
+                    try {
+                      await CourseRepository().deleteCourse(c.id);
+                      if (!mounted) return;
+                      ref.invalidate(coursesProvider);
+                      context.go('/admin/courses');
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'মুছে ফেলা যায়নি: $e',
+                            style: GoogleFonts.hindSiliguri(),
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
                 AdminCourseSyllabusTab(courseId: c.id),
               ],
             ),
@@ -86,9 +152,15 @@ class _AdminCourseDetailScreenState extends State<AdminCourseDetailScreen> {
 }
 
 class _CourseOverviewBody extends StatelessWidget {
-  const _CourseOverviewBody({required this.course});
+  const _CourseOverviewBody({
+    required this.course,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final CourseModel course;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +226,27 @@ class _CourseOverviewBody extends StatelessWidget {
               label: Text(
                 'মাসিক ৳${c.monthlyFee.toStringAsFixed(0)}',
                 style: GoogleFonts.hindSiliguri(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+                label: Text('সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onDelete,
+                style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+                icon: const Icon(Icons.delete_outline),
+                label: Text('মুছুন', style: GoogleFonts.hindSiliguri()),
               ),
             ),
           ],

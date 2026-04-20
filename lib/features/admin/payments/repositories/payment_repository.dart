@@ -411,7 +411,6 @@ class PaymentRepository {
       'status': status.toJson(),
       'note': note,
       'paid_at': paidAt.toUtc().toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', id);
     final row = await _client.from(kTablePaymentLedger).select().eq('id', id).single();
     return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
@@ -446,7 +445,8 @@ class PaymentRepository {
       q = q.inFilter('status', ['pending', 'partial', 'overdue']);
     }
     final rows = await q.order('due_date', ascending: true);
-    return (rows as List<dynamic>)
+    final list = (rows as List?) ?? const <dynamic>[];
+    return list
         .map((e) => PaymentScheduleModel.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }

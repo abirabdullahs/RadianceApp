@@ -44,6 +44,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   final _studentQuery = TextEditingController();
   final _subtotal = TextEditingController();
   final _discount = TextEditingController(text: '0');
+  final _paidAmount = TextEditingController();
   final _note = TextEditingController();
   final _monthDisplay = TextEditingController();
   final _paidDateDisplay = TextEditingController();
@@ -195,6 +196,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           _syncPaidDateDisplay();
           _subtotal.text = ledger.amountDue.toStringAsFixed(2);
           _discount.text = ledger.discountAmount.toStringAsFixed(2);
+        _paidAmount.text = ledger.amountPaid.toStringAsFixed(2);
           _note.text = ledger.note ?? '';
           _paymentMethod = PaymentMethod.fromJson(ledger.paymentMethod) ?? PaymentMethod.cash;
           _loadingEdit = false;
@@ -241,6 +243,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         _syncPaidDateDisplay();
         _subtotal.text = p.subtotal.toStringAsFixed(2);
         _discount.text = p.discount.toStringAsFixed(2);
+        _paidAmount.text = p.amount.toStringAsFixed(2);
         _note.text = p.note ?? '';
         _paymentMethod = p.paymentMethod ?? PaymentMethod.cash;
         _loadingEdit = false;
@@ -292,6 +295,23 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     return null;
   }
 
+  /// Pushes the selected course's fee (e.g. `monthlyFee`) into fee items that
+  /// match monthly / tuition payment types. Called from the course selector
+  /// and when a single active enrollment auto-picks a course.
+  void _applyCourseFeeToItems(CourseModel course) {
+    if (_feeItems.isEmpty) return;
+    final amt = course.monthlyFee.toStringAsFixed(2);
+    for (final item in _feeItems) {
+      final t = _typeById(item.paymentTypeId);
+      if (t == null) continue;
+      final code = t.code.toLowerCase();
+      if (code == 'monthly' || code == 'tuition' || code == 'monthly_fee') {
+        item.amountDueCtrl.text = amt;
+        item.amountPaidCtrl.text = amt;
+      }
+    }
+  }
+
   double _parseNum(String raw) => double.tryParse(raw.trim().replaceAll(',', '')) ?? 0;
 
   double _multiGrandTotal() {
@@ -311,6 +331,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     _studentQuery.dispose();
     _subtotal.dispose();
     _discount.dispose();
+    _paidAmount.dispose();
     _note.dispose();
     _monthDisplay.dispose();
     _paidDateDisplay.dispose();
@@ -411,6 +432,8 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       _courseOptions = courses;
       if (courses.length == 1) {
         _selectedCourseId = courses.first.id;
+        _subtotal.text = courses.first.monthlyFee.toStringAsFixed(0);
+        _applyCourseFeeToItems(courses.first);
       } else {
         _selectedCourseId = null;
       }
@@ -562,21 +585,21 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       if (_existingLedger != null) {
         final subtotal = _parseNum(_subtotal.text);
         final discount = _parseNum(_discount.text);
-        final grand = double.parse((subtotal - discount).toStringAsFixed(2));
-        if (grand <= 0) {
-          throw Exception('চূড়ান্ত পরিমাণ ০ এর উপরে হতে হবে');
+        final paidAmount = _parseNum(_paidAmount.text);
+        if (paidAmount <= 0) {
+          throw Exception('পরিশোধিত পরিমাণ ০ এর উপরে হতে হবে');
         }
         final updated = await ref.read(paymentServiceProvider).updateRecordedPayment(
               previous: _existingLedger!,
               amountDue: subtotal,
               discountAmount: discount,
               fineAmount: _existingLedger!.fineAmount,
-              amountPaid: grand,
+              amountPaid: paidAmount,
               paymentMethod: _paymentMethod.toJson(),
               paidAt: _paymentDate,
               note: _note.text.trim().isEmpty ? null : _note.text.trim(),
             );
-        notifyAmount = grand;
+        notifyAmount = paidAmount;
         successVoucher = updated.voucherNo;
         saved = PaymentModel(
           id: updated.id,
@@ -598,13 +621,13 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       } else if (_existingPayment != null) {
         final subtotal = _parseNum(_subtotal.text);
         final discount = _parseNum(_discount.text);
-        final grand = double.parse((subtotal - discount).toStringAsFixed(2));
-        if (grand <= 0) {
-          throw Exception('চূড়ান্ত পরিমাণ ০ এর উপরে হতে হবে');
+        final paidAmount = _parseNum(_paidAmount.text);
+        if (paidAmount <= 0) {
+          throw Exception('পরিশোধিত পরিমাণ ০ এর উপরে হতে হবে');
         }
         saved = await ref.read(paymentRepositoryProvider).updatePayment(
               _existingPayment!.copyWith(
-                amount: grand,
+                amount: paidAmount,
                 subtotal: subtotal,
                 discount: discount,
                 paymentMethod: _paymentMethod,
@@ -612,7 +635,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                 paidAt: _paymentDate,
               ),
             );
-        notifyAmount = grand;
+        notifyAmount = paidAmount;
         successVoucher = saved.voucherNo;
       } else {
         if (_feeItems.isEmpty) {
@@ -943,7 +966,9 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                               setState(() {
                                 _selectedCourseId = c?.id;
                                 if (c != null) {
-                                  _subtotal.text = c.monthlyFee.toStringAsFixed(0);
+                                  _subtotal.text =
+                                      c.monthlyFee.toStringAsFixed(0);
+                                  _applyCourseFeeToItems(c);
                                 }
                               });
                               _autoApplyStudentDiscounts();
@@ -990,6 +1015,33 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                             : (v) {
                                                 setState(() {
                                                   item.paymentTypeId = v ?? item.paymentTypeId;
+                                                  final t = _typeById(item.paymentTypeId);
+                                                  final c = _course;
+                                                  if (t != null) {
+                                                    final code = t.code.toLowerCase();
+                                                    if ((code == 'monthly' ||
+                                                            code == 'tuition' ||
+                                                            code == 'monthly_fee') &&
+                                                        c != null) {
+                                                      final amt = c.monthlyFee
+                                                          .toStringAsFixed(2);
+                                                      item.amountDueCtrl.text = amt;
+                                                      item.amountPaidCtrl.text = amt;
+                                                    } else {
+                                                      final defAmt = _paymentSettings
+                                                          .defaultAmountForCode(
+                                                        t.code,
+                                                        fallback:
+                                                            t.defaultAmount ?? 0,
+                                                      );
+                                                      if (defAmt > 0) {
+                                                        item.amountDueCtrl.text =
+                                                            defAmt.toStringAsFixed(2);
+                                                        item.amountPaidCtrl.text =
+                                                            defAmt.toStringAsFixed(2);
+                                                      }
+                                                    }
+                                                  }
                                                 });
                                                 _autoApplyStudentDiscounts();
                                               },
@@ -1112,6 +1164,20 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: _decoration('ছাড় (৳)'),
                       style: GoogleFonts.nunito(),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _paidAmount,
+                      enabled: !_submitting,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _decoration('পরিশোধিত (৳)'),
+                      style: GoogleFonts.nunito(),
+                      validator: (v) {
+                        final n = _parseNum(v ?? '');
+                        if (n <= 0) return 'সঠিক পরিশোধিত পরিমাণ দিন';
+                        return null;
+                      },
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
