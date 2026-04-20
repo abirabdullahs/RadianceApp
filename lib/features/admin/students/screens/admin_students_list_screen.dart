@@ -4,13 +4,34 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../shared/models/course_model.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/user_model.dart';
+import '../../courses/repositories/course_repository.dart';
 import '../repositories/student_repository.dart';
 
+class _StudentListFilter {
+  const _StudentListFilter({
+    required this.query,
+    required this.courseId,
+  });
+
+  final String query;
+  final String? courseId;
+}
+
 final _studentListProvider =
-    FutureProvider.autoDispose.family<List<UserModel>, String>((ref, query) async {
-  return StudentRepository().getStudents(searchQuery: query.isEmpty ? null : query);
+    FutureProvider.autoDispose.family<List<UserModel>, _StudentListFilter>((ref, filter) async {
+  return StudentRepository().getStudents(
+    searchQuery: filter.query.isEmpty ? null : filter.query,
+    courseId: filter.courseId,
+  );
+});
+
+final _courseFilterOptionsProvider = FutureProvider.autoDispose<List<CourseModel>>((ref) async {
+  final list = await CourseRepository().getCourses();
+  return list.where((c) => c.isActive).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
 });
 
 /// Searchable list of students → profile route.
@@ -24,6 +45,7 @@ class AdminStudentsScreen extends ConsumerStatefulWidget {
 class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
   final _controller = TextEditingController();
   String _query = '';
+  String? _selectedCourseId;
 
   @override
   void dispose() {
@@ -33,7 +55,12 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(_studentListProvider(_query));
+    final filter = _StudentListFilter(
+      query: _query,
+      courseId: _selectedCourseId,
+    );
+    final async = ref.watch(_studentListProvider(filter));
+    final courseAsync = ref.watch(_courseFilterOptionsProvider);
 
     return AdminResponsiveScaffold(
       title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
@@ -47,16 +74,50 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: 'নাম / ফোন / আইডি দিয়ে খুঁজুন',
-                hintStyle: GoogleFonts.hindSiliguri(),
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              style: GoogleFonts.hindSiliguri(),
-              onSubmitted: (v) => setState(() => _query = v.trim()),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'নাম / ফোন / আইডি দিয়ে খুঁজুন',
+                    hintStyle: GoogleFonts.hindSiliguri(),
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  style: GoogleFonts.hindSiliguri(),
+                  onSubmitted: (v) => setState(() => _query = v.trim()),
+                ),
+                const SizedBox(height: 10),
+                courseAsync.when(
+                  data: (courses) {
+                    return DropdownButtonFormField<String?>(
+                      // ignore: deprecated_member_use
+                      value: _selectedCourseId,
+                      decoration: InputDecoration(
+                        labelText: 'কোর্স অনুযায়ী ফিল্টার',
+                        labelStyle: GoogleFonts.hindSiliguri(),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.filter_alt_outlined),
+                      ),
+                      items: [
+                        DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('সব কোর্স', style: GoogleFonts.hindSiliguri()),
+                        ),
+                        ...courses.map(
+                          (c) => DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Text(c.name, style: GoogleFonts.hindSiliguri()),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) => setState(() => _selectedCourseId = v),
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(minHeight: 2),
+                  error: (_, _) => const SizedBox.shrink(),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -73,7 +134,7 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
                     final u = list[i];
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: context.themePrimary.withOpacity(0.15),
+                        backgroundColor: context.themePrimary.withValues(alpha: 0.15),
                         child: Text(
                           u.fullNameBn.isNotEmpty ? u.fullNameBn[0] : '?',
                           style: TextStyle(color: context.themePrimary),
@@ -81,7 +142,7 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
                       ),
                       title: Text(u.fullNameBn, style: GoogleFonts.hindSiliguri()),
                       subtitle: Text(
-                        '${u.studentId ?? u.phone}',
+                        u.studentId ?? u.phone,
                         style: GoogleFonts.nunito(fontSize: 12),
                       ),
                       onTap: () => context.push('/admin/students/${u.id}'),

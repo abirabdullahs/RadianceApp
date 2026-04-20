@@ -713,7 +713,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
               saved,
               _student!,
               _course!,
-              serviceName: firstType?.nameBn ?? firstType?.name ?? 'Payment',
+              serviceName: firstType?.name ?? firstType?.code ?? 'Payment',
             );
         if (!mounted) return;
         await showDialog<void>(
@@ -936,14 +936,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                           : 'কোনো সক্রিয় কোর্স নেই',
                       style: GoogleFonts.hindSiliguri(color: theme.hintColor),
                     )
-                  else if (_courseOptions.length == 1)
-                    InputDecorator(
-                      decoration: _decoration('কোর্স'),
-                      child: Text(
-                        _courseOptions.first.name,
-                        style: GoogleFonts.hindSiliguri(),
-                      ),
-                    )
                   else
                     DropdownButtonFormField<CourseModel>(
                       // ignore: deprecated_member_use — controlled selection via setState
@@ -957,10 +949,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                             ),
                           )
                           .toList(),
-                      onChanged: (_submitting ||
-                              _loadingEdit ||
-                              _existingLedger != null ||
-                              _existingPayment != null)
+                      onChanged: (_submitting || _loadingEdit)
                           ? null
                           : (c) {
                               setState(() {
@@ -1135,10 +1124,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     controller: _monthDisplay,
                     readOnly: true,
                     enabled: !_submitting && !_loadingEdit,
-                    onTap: (_submitting ||
-                            _loadingEdit ||
-                            _existingLedger != null ||
-                            _existingPayment != null)
+                    onTap: (_submitting || _loadingEdit)
                         ? null
                         : _pickBillingMonth,
                     decoration: _decoration('বিলিং মাস').copyWith(

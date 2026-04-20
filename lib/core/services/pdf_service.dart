@@ -78,9 +78,7 @@ class PdfService {
     final method     = payment.paymentMethod?.name ?? '—';
     final total      = payment.amount;
     final inWords    = _amountInWordsTaka(total);
-    final svc        = (serviceName?.trim().isNotEmpty ?? false)
-        ? serviceName!.trim()
-        : '—';
+    final svc = _latinOnly(serviceName, fallback: 'Payment');
 
     final displayName = _pickLatinName(student);
 
@@ -111,16 +109,22 @@ class PdfService {
               studentPhone: student.phone,
               guardianName: guardianName,
               batchName: batchName,
-              courseName: course.name,
+              courseName: _latinOnly(course.name, fallback: 'Course'),
               serviceName: svc,
               billingMonth: monthLabel,
               method: method,
             ),
             pw.SizedBox(height: 14),
-            _buildAmountTable(fonts, payment, total, inWords),
+            _buildAmountTable(
+              fonts,
+              payment,
+              total,
+              inWords,
+              serviceName: svc,
+            ),
             if (payment.note?.trim().isNotEmpty ?? false) ...[
               pw.SizedBox(height: 12),
-              _buildNoteBox(fonts, payment.note!.trim()),
+              _buildNoteBox(fonts, _latinOnly(payment.note, fallback: '')),
             ],
             pw.Spacer(),
             _buildSignatures(fonts),
@@ -389,51 +393,37 @@ pw.Widget _buildAmountTable(
   PaymentModel payment,
   double total,
   String words,
+  {required String serviceName}
 ) {
+  final serviceChargeRaw = total - (payment.subtotal - payment.discount);
+  final serviceCharge = serviceChargeRaw <= 0 ? 0.0 : serviceChargeRaw;
   return pw.Container(
     decoration: pw.BoxDecoration(
       border: pw.Border.all(color: _ink, width: 0.6),
     ),
     child: pw.Column(
       children: [
-        // Header
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(bottom: pw.BorderSide(color: _ink, width: 0.6)),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                'DESCRIPTION',
-                style: pw.TextStyle(
-                  font: f.sansBold,
-                  fontSize: 7.5,
-                  letterSpacing: 2,
-                  color: _ink,
-                ),
-              ),
-              pw.Text(
-                'AMOUNT',
-                style: pw.TextStyle(
-                  font: f.sansBold,
-                  fontSize: 7.5,
-                  letterSpacing: 2,
-                  color: _ink,
-                ),
-              ),
-            ],
-          ),
+        pw.Table(
+          border: pw.TableBorder.all(color: _ink, width: 0.35),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(28),
+            1: pw.FlexColumnWidth(3),
+            2: pw.FixedColumnWidth(50),
+            3: pw.FixedColumnWidth(52),
+            4: pw.FixedColumnWidth(62),
+          },
+          children: [
+            _memoHeaderRow(f),
+            _memoItemRow(
+              f,
+              slNo: '1',
+              feeName: serviceName,
+              amount: _money(payment.subtotal),
+              discount: _money(payment.discount),
+              serviceCharge: _money(serviceCharge),
+            ),
+          ],
         ),
-        _amountRow(f, 'Course Fee (Subtotal)', _money(payment.subtotal)),
-        if (payment.discount > 0)
-          _amountRow(
-            f,
-            'Discount Applied',
-            '- ${_money(payment.discount)}',
-            muted: true,
-          ),
         // Total row — double-line top border for emphasis, no fill (printer friendly)
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -498,38 +488,58 @@ pw.Widget _buildAmountTable(
   );
 }
 
-pw.Widget _amountRow(
-  _PdfFonts f,
-  String label,
-  String value, {
-  bool muted = false,
-}) {
-  return pw.Container(
-    padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-    decoration: const pw.BoxDecoration(
-      border: pw.Border(bottom: pw.BorderSide(color: _hair, width: 0.4)),
-    ),
-    child: pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-      children: [
-        pw.Text(
-          label,
+pw.TableRow _memoHeaderRow(_PdfFonts f) {
+  pw.Widget h(String text, {pw.Alignment align = pw.Alignment.centerLeft}) =>
+      pw.Container(
+        alignment: align,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+        child: pw.Text(
+          text,
           style: pw.TextStyle(
-            font: f.sans,
-            fontSize: 9,
+            font: f.sansBold,
+            fontSize: 7,
+            letterSpacing: 0.7,
             color: _ink,
           ),
         ),
-        pw.Text(
-          value,
-          style: pw.TextStyle(
-            font: f.sansMedium,
-            fontSize: 9,
-            color: muted ? _muted : _ink,
-          ),
+      );
+  return pw.TableRow(
+    children: [
+      h('SL', align: pw.Alignment.center),
+      h('FEE NAME'),
+      h('AMOUNT', align: pw.Alignment.centerRight),
+      h('DISCOUNT', align: pw.Alignment.centerRight),
+      h('SERVICE CHARGE', align: pw.Alignment.centerRight),
+    ],
+  );
+}
+
+pw.TableRow _memoItemRow(
+  _PdfFonts f, {
+  required String slNo,
+  required String feeName,
+  required String amount,
+  required String discount,
+  required String serviceCharge,
+}) {
+  pw.Widget c(String text, {pw.Alignment align = pw.Alignment.centerLeft}) =>
+      pw.Container(
+        alignment: align,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+        child: pw.Text(
+          text,
+          style: pw.TextStyle(font: f.sansMedium, fontSize: 8.4, color: _ink),
+          maxLines: 2,
         ),
-      ],
-    ),
+      );
+  return pw.TableRow(
+    children: [
+      c(slNo, align: pw.Alignment.center),
+      c(_latinOnly(feeName, fallback: 'Payment')),
+      c(amount, align: pw.Alignment.centerRight),
+      c(discount, align: pw.Alignment.centerRight),
+      c(serviceCharge, align: pw.Alignment.centerRight),
+    ],
   );
 }
 
@@ -637,6 +647,17 @@ String _pickLatinName(UserModel u) {
   final id = u.studentId?.trim();
   if (id != null && id.isNotEmpty) return 'Student $id';
   return 'Student';
+}
+
+/// Removes non-Latin glyphs to prevent missing glyph warnings in PDF output.
+String _latinOnly(String? value, {String fallback = '-'}) {
+  final raw = value?.trim() ?? '';
+  if (raw.isEmpty) return fallback;
+  final cleaned = raw
+      .replaceAll(RegExp(r'[^\x20-\x7E]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return cleaned.isEmpty ? fallback : cleaned;
 }
 
 String _fmtDate(DateTime d) {
