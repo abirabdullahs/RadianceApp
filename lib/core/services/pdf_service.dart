@@ -11,15 +11,15 @@ import '../../shared/models/user_model.dart';
 
 // ─── Institution constants ───────────────────────────────────────────────────
 const String kInstitutionName      = 'Radiance';
-const String kInstitutionTagline   = 'Coaching Center';
+const String kInstitutionTagline   = 'Academic Guidence & Admission Support';
 const String kInstitutionAddress   =
     'Ovijan 56, SSAC Road, Auchpara, Tongi, Gazipur';
 const String kInstitutionContact   = '01406-751374';
 
-// ─── Monochrome palette (printer-friendly — no solid fills) ──────────────────
+// ─── Monochrome palette (printer-friendly) ────────────────────────────────────
 const PdfColor _ink    = PdfColors.black;
-const PdfColor _muted  = PdfColor(0.40, 0.40, 0.40);
-const PdfColor _hair   = PdfColor(0.75, 0.75, 0.75);
+const PdfColor _muted  = PdfColor(0.35, 0.35, 0.35);
+const PdfColor _hair   = PdfColor(0.78, 0.78, 0.78);
 
 /// Shared PDF font bundle — loaded once per export.
 class _PdfFonts {
@@ -78,7 +78,7 @@ class PdfService {
     final method     = payment.paymentMethod?.name ?? '—';
     final total      = payment.amount;
     final inWords    = _amountInWordsTaka(total);
-    final svc = _latinOnly(serviceName, fallback: 'Payment');
+    final svc = _formatServiceLabel(serviceName, payment.forMonth);
 
     final displayName = _pickLatinName(student);
 
@@ -89,6 +89,7 @@ class PdfService {
         ? institutionPhone!.trim()
         : kInstitutionContact;
 
+    final qrPayload = _buildPaymentQrPayload(payment);
     final doc = pw.Document(theme: fonts.buildTheme());
 
     doc.addPage(
@@ -127,7 +128,7 @@ class PdfService {
               _buildNoteBox(fonts, _latinOnly(payment.note, fallback: '')),
             ],
             pw.Spacer(),
-            _buildSignatures(fonts),
+            _buildSignatureAndQr(fonts, qrPayload),
             pw.SizedBox(height: 10),
             _buildFooter(fonts, footerNote),
           ],
@@ -181,6 +182,25 @@ pw.Widget _buildHeader(
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
+              pw.Text(
+                'SSC/Dakhil & HSC/Alim',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: f.sansMedium,
+                  fontSize: 8,
+                  color: _ink,
+                ),
+              ),
+              pw.Text(
+                'Academic & Admission',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: f.sansMedium,
+                  fontSize: 8,
+                  color: _ink,
+                ),
+              ),
+              pw.SizedBox(height: 3),
               pw.Text(
                 address,
                 textAlign: pw.TextAlign.right,
@@ -245,7 +265,7 @@ pw.Widget _buildTitleRow(_PdfFonts f, String voucherNo, DateTime date) {
       pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
-          _metaLine(f, 'Voucher', voucherNo),
+          _metaLine(f, 'Voucher', voucherNo, valueColor: PdfColors.red700),
           pw.SizedBox(height: 2),
           _metaLine(f, 'Date', _fmtDate(date)),
         ],
@@ -254,7 +274,12 @@ pw.Widget _buildTitleRow(_PdfFonts f, String voucherNo, DateTime date) {
   );
 }
 
-pw.Widget _metaLine(_PdfFonts f, String label, String value) {
+pw.Widget _metaLine(
+  _PdfFonts f,
+  String label,
+  String value, {
+  PdfColor valueColor = _ink,
+}) {
   return pw.Row(
     mainAxisSize: pw.MainAxisSize.min,
     children: [
@@ -272,7 +297,7 @@ pw.Widget _metaLine(_PdfFonts f, String label, String value) {
         style: pw.TextStyle(
           font: f.sansBold,
           fontSize: 10,
-          color: _ink,
+          color: valueColor,
         ),
       ),
     ],
@@ -476,7 +501,7 @@ pw.Widget _buildAmountTable(
                   style: pw.TextStyle(
                     font: f.sansMedium,
                     fontSize: 8.5,
-                    color: _ink,
+                    color: PdfColors.red800,
                   ),
                 ),
               ],
@@ -506,7 +531,7 @@ pw.TableRow _memoHeaderRow(_PdfFonts f) {
   return pw.TableRow(
     children: [
       h('SL', align: pw.Alignment.center),
-      h('FEE NAME'),
+      h('SERVICE NAME'),
       h('AMOUNT', align: pw.Alignment.centerRight),
       h('DISCOUNT', align: pw.Alignment.centerRight),
       h('SERVICE CHARGE', align: pw.Alignment.centerRight),
@@ -579,12 +604,43 @@ pw.Widget _buildNoteBox(_PdfFonts f, String note) {
 
 // ─── Signatures ──────────────────────────────────────────────────────────────
 
-pw.Widget _buildSignatures(_PdfFonts f) {
+pw.Widget _buildSignatureAndQr(_PdfFonts f, String qrPayload) {
   return pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
     children: [
-      _sigBlock(f, "Student's Signature"),
-      pw.SizedBox(width: 24),
-      _sigBlock(f, 'Authorized Signature & Stamp'),
+      pw.Expanded(
+        child: pw.Row(
+          children: [
+            _sigBlock(f, "Student's Signature"),
+            pw.SizedBox(width: 24),
+            _sigBlock(f, 'Authorized Signature & Stamp'),
+          ],
+        ),
+      ),
+      pw.SizedBox(width: 14),
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Container(
+            width: 54,
+            height: 54,
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: _ink, width: 0.5),
+            ),
+            padding: const pw.EdgeInsets.all(3),
+            child: pw.BarcodeWidget(
+              barcode: pw.Barcode.qrCode(),
+              data: qrPayload,
+              drawText: false,
+            ),
+          ),
+          pw.SizedBox(height: 3),
+          pw.Text(
+            'Scan to verify',
+            style: pw.TextStyle(font: f.sans, fontSize: 6.5, color: _muted),
+          ),
+        ],
+      ),
     ],
   );
 }
@@ -658,6 +714,47 @@ String _latinOnly(String? value, {String fallback = '-'}) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   return cleaned.isEmpty ? fallback : cleaned;
+}
+
+String _formatServiceLabel(String? serviceName, DateTime forMonth) {
+  final raw = _latinOnly(serviceName, fallback: 'Payment').toLowerCase();
+  if (raw == 'monthly' || raw == 'monthly_fee' || raw == 'tuition') {
+    final m = _monthTag(forMonth);
+    return 'Monthly Fee($m)';
+  }
+  return _toTitleCase(raw);
+}
+
+String _buildPaymentQrPayload(PaymentModel p) {
+  // Temporary behavior: scanning QR shows only voucher number.
+  final voucher = p.voucherNo.trim();
+  return voucher.isEmpty ? p.id : voucher;
+}
+
+String _monthTag(DateTime d) {
+  const names = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
+  return '${names[d.month - 1]}-${d.year}';
+}
+
+String _toTitleCase(String raw) {
+  final parts = raw.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+  if (parts.isEmpty) return raw;
+  return parts
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
 }
 
 String _fmtDate(DateTime d) {
