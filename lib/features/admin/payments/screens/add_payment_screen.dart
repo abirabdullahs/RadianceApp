@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
@@ -68,6 +70,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
 
   DateTime _billingMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _paymentDate = DateTime.now();
+  final _monthsCountCtrl = TextEditingController(text: '1');
 
   PaymentMethod _paymentMethod = PaymentMethod.cash;
 
@@ -314,13 +317,16 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
 
   double _parseNum(String raw) => double.tryParse(raw.trim().replaceAll(',', '')) ?? 0;
 
-  double _multiGrandTotal() {
+  double _multiGrandTotalWithMonths() {
+    final months = _parseMonthsCount();
     var sum = 0.0;
     for (final item in _feeItems) {
+      final t = _typeById(item.paymentTypeId);
       final due = _parseNum(item.amountDueCtrl.text);
       final dis = _parseNum(item.discountCtrl.text);
       final fine = _parseNum(item.fineCtrl.text);
-      sum += (due - dis + fine);
+      final line = (due - dis + fine);
+      sum += line * ((t?.isRecurring ?? false) ? months : 1);
     }
     return double.parse(sum.toStringAsFixed(2));
   }
@@ -336,6 +342,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     _monthDisplay.dispose();
     _paidDateDisplay.dispose();
     _transactionRef.dispose();
+    _monthsCountCtrl.dispose();
     for (final item in _feeItems) {
       item.dispose();
     }
@@ -561,6 +568,13 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     return double.parse((s - d).toStringAsFixed(2));
   }
 
+  int _parseMonthsCount() {
+    final n = int.tryParse(_monthsCountCtrl.text.trim()) ?? 1;
+    if (n < 1) return 1;
+    if (n > 24) return 24;
+    return n;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_student == null) {
@@ -580,6 +594,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     setState(() => _submitting = true);
     try {
       PaymentModel? saved;
+      Uint8List? successPdfBytes;
       double notifyAmount = 0;
       String successVoucher = '';
       if (_existingLedger != null) {
@@ -641,6 +656,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         if (_feeItems.isEmpty) {
           throw Exception('কমপক্ষে ১টি ফি যোগ করুন');
         }
+        final monthsCount = _parseMonthsCount();
         final reqs = <PaymentRecordRequest>[];
         for (final item in _feeItems) {
           final t = _typeById(item.paymentTypeId);
@@ -660,30 +676,34 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           if (discount < 0 || discount > due) {
             throw Exception('ছাড় সঠিক নয়');
           }
-          reqs.add(
-            PaymentRecordRequest(
-              studentId: _student!.id,
-              courseId: _course!.id,
-              paymentTypeId: t.id,
-              paymentTypeCode: t.code,
-              forMonth: t.isRecurring ? _billingMonth : null,
-              amountDue: due,
-              amountPaid: paid,
-              discountAmount: discount,
-              fineAmount: fine,
-              paymentMethod: _paymentMethod.toJson(),
-              transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
-              note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-              description: item.descriptionCtrl.text.trim().isEmpty ? null : item.descriptionCtrl.text.trim(),
-              paidAt: _paymentDate,
-              createdBy: supabaseClient.auth.currentUser?.id,
-              dueDate: DateTime(
-                _billingMonth.year,
-                _billingMonth.month,
-                _paymentSettings.dueDayOfMonth,
+          final repeat = t.isRecurring ? monthsCount : 1;
+          for (var idx = 0; idx < repeat; idx++) {
+            final month = DateTime(_billingMonth.year, _billingMonth.month + idx, 1);
+            reqs.add(
+              PaymentRecordRequest(
+                studentId: _student!.id,
+                courseId: _course!.id,
+                paymentTypeId: t.id,
+                paymentTypeCode: t.code,
+                forMonth: t.isRecurring ? month : null,
+                amountDue: due,
+                amountPaid: paid,
+                discountAmount: discount,
+                fineAmount: fine,
+                paymentMethod: _paymentMethod.toJson(),
+                transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
+                note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+                description: item.descriptionCtrl.text.trim().isEmpty ? null : item.descriptionCtrl.text.trim(),
+                paidAt: _paymentDate,
+                createdBy: supabaseClient.auth.currentUser?.id,
+                dueDate: DateTime(
+                  month.year,
+                  month.month,
+                  _paymentSettings.dueDayOfMonth,
+                ),
               ),
-            ),
-          );
+            );
+          }
         }
         final multi = await ref.read(paymentServiceProvider).recordMultiFeePayments(reqs);
         if (multi.items.isEmpty) {
@@ -767,6 +787,20 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         );
       }
 
+      if (isEdit && _student != null && _course != null) {
+        try {
+          final serviceName = _existingLedger?.paymentTypeCode ?? 'Payment';
+          successPdfBytes = await ref.read(pdfServiceProvider).generateVoucherPdf(
+                saved,
+                _student!,
+                _course!,
+                serviceName: serviceName,
+              );
+        } catch (_) {
+          successPdfBytes = null;
+        }
+      }
+
       if (!isEdit) {
         try {
           await ref.read(smsServiceProvider).notifyPaymentRecorded(
@@ -819,6 +853,17 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                 ],
               ),
               actions: [
+                if (successPdfBytes != null)
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      await Printing.layoutPdf(
+                        onLayout: (_) async => successPdfBytes!,
+                        name: 'RCC-$successVoucher.pdf',
+                      );
+                    },
+                    child: Text('প্রিন্ট', style: GoogleFonts.hindSiliguri()),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: Text('ঠিক আছে', style: GoogleFonts.hindSiliguri()),
@@ -828,6 +873,9 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           },
         );
       }
+
+      if (!mounted) return;
+      context.go('/admin/payments');
     } catch (e) {
       if (mounted) {
         setState(() => _submitting = false);
@@ -1114,9 +1162,29 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
-                        'মোট নেট: ৳ ${_multiGrandTotal().toStringAsFixed(2)}',
+                        'মোট নেট: ৳ ${_multiGrandTotalWithMonths().toStringAsFixed(2)}',
                         style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (_existingLedger == null && _existingPayment == null) ...[
+                    TextFormField(
+                      controller: _monthsCountCtrl,
+                      enabled: !_submitting && !_loadingEdit,
+                      keyboardType: TextInputType.number,
+                      decoration: _decoration('একসাথে কত মাস নিবেন? (Recurring fee)').copyWith(
+                        helperText: 'Monthly/Tuition type-এ প্রযোজ্য। সর্বোচ্চ 24 মাস।',
+                      ),
+                      style: GoogleFonts.nunito(),
+                      validator: (v) {
+                        final n = int.tryParse((v ?? '').trim());
+                        if (n == null || n < 1 || n > 24) {
+                          return '১ থেকে ২৪ এর মধ্যে দিন';
+                        }
+                        return null;
+                      },
+                      onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 16),
                   ],

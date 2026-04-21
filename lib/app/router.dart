@@ -27,6 +27,7 @@ import '../features/admin/exams/screens/admin_results_dashboard_screen.dart';
 import '../features/admin/students/screens/admin_student_profile_screen.dart';
 import '../features/admin/students/screens/admin_students_list_screen.dart';
 import '../features/admin/students/screens/add_student_screen.dart';
+import '../features/admin/students/screens/admin_material_segment_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/splash_screen.dart';
 import '../features/home/screens/public_home_screen.dart';
@@ -156,6 +157,10 @@ final GoRouter appRouter = GoRouter(
         final id = state.pathParameters['id']!;
         return StudentProfileScreen(studentId: id);
       },
+    ),
+    GoRoute(
+      path: '/admin/materials',
+      builder: (context, state) => const AdminMaterialSegmentScreen(),
     ),
     GoRoute(
       path: '/admin/payments/edit/:id',

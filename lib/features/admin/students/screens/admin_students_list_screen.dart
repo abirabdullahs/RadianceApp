@@ -18,6 +18,17 @@ class _StudentListFilter {
 
   final String query;
   final String? courseId;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _StudentListFilter &&
+        other.query == query &&
+        other.courseId == courseId;
+  }
+
+  @override
+  int get hashCode => Object.hash(query, courseId);
 }
 
 final _studentListProvider =
@@ -64,6 +75,13 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
 
     return AdminResponsiveScaffold(
       title: Text('শিক্ষার্থী', style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w600)),
+      actions: [
+        IconButton(
+          tooltip: 'Material Segment',
+          icon: const Icon(Icons.inventory_2_outlined),
+          onPressed: () => context.push('/admin/materials'),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/students/add'),
         backgroundColor: context.themePrimary,
@@ -145,6 +163,23 @@ class _AdminStudentsScreenState extends ConsumerState<AdminStudentsScreen> {
                         u.studentId ?? u.phone,
                         style: GoogleFonts.nunito(fontSize: 12),
                       ),
+                      trailing: !u.isActive
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'PAUSED',
+                                style: GoogleFonts.nunito(
+                                  color: Colors.orange.shade800,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            )
+                          : null,
                       onTap: () => context.push('/admin/students/${u.id}'),
                     );
                   },

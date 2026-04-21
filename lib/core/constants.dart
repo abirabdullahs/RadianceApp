@@ -91,3 +91,5 @@ const String kTableStudentDiscounts = 'student_discounts';
 const String kTableAdvanceBalance = 'advance_balance';
 const String kTablePaymentSettings = 'payment_settings';
 const String kTableSmsTemplates = 'sms_templates';
+const String kTableMaterials = 'materials';
+const String kTableMaterialAssignments = 'material_assignments';

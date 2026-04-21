@@ -108,7 +108,7 @@ class StudentProfileScreen extends ConsumerWidget {
             ),
             body: TabBarView(
               children: [
-                _InfoTab(u: u),
+                _InfoTab(u: u, studentId: studentId),
                 _CoursesTab(
                   enrollments: b.enrollments,
                   courseNames: b.courseNames,
@@ -142,13 +142,14 @@ class StudentProfileScreen extends ConsumerWidget {
   }
 }
 
-class _InfoTab extends StatelessWidget {
-  const _InfoTab({required this.u});
+class _InfoTab extends ConsumerWidget {
+  const _InfoTab({required this.u, required this.studentId});
 
   final UserModel u;
+  final String studentId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final dob = u.dateOfBirth != null
         ? DateFormat.yMMMd().format(u.dateOfBirth!)
         : '—';
@@ -168,6 +169,16 @@ class _InfoTab extends StatelessWidget {
           subtitle: Text(u.studentId ?? '—', style: GoogleFonts.nunito()),
         ),
         ListTile(
+          title: Text('স্ট্যাটাস', style: GoogleFonts.hindSiliguri()),
+          subtitle: Text(
+            u.isActive ? 'Active' : 'Paused',
+            style: GoogleFonts.nunito(
+              color: u.isActive ? Colors.green.shade700 : Colors.orange.shade800,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        ListTile(
           title: Text('জন্মতারিখ', style: GoogleFonts.hindSiliguri()),
           subtitle: Text(dob, style: GoogleFonts.nunito()),
         ),
@@ -179,8 +190,106 @@ class _InfoTab extends StatelessWidget {
           title: Text('ঠিকানা', style: GoogleFonts.hindSiliguri()),
           subtitle: Text(u.address ?? '—', style: GoogleFonts.hindSiliguri()),
         ),
+        const SizedBox(height: 12),
+        Card(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Student Actions',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => _pauseStudent(context, ref),
+                  icon: const Icon(Icons.pause_circle_outline),
+                  label: Text('Pause Student', style: GoogleFonts.nunito()),
+                ),
+                const SizedBox(height: 8),
+                FilledButton.tonalIcon(
+                  onPressed: () => _hardDeleteStudent(context, ref),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: Text('Delete Student Permanently', style: GoogleFonts.nunito()),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _pauseStudent(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Pause student?'),
+            content: const Text(
+              'This will set account inactive and suspend active enrollments.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Pause')),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok) return;
+    try {
+      await StudentRepository().pauseStudent(studentId);
+      ref.invalidate(_studentProfileProvider(studentId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Student paused')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _hardDeleteStudent(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Delete permanently?'),
+            content: const Text(
+              'This will permanently remove this student and all related data across payments, results, attendance, community, and doubts.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Delete Forever'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    try {
+      await StudentRepository().hardDeleteStudent(studentId);
+      ref.invalidate(_studentProfileProvider(studentId));
+      if (context.mounted) {
+        context.go('/admin/students');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Student deleted permanently')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
+    }
   }
 }
 
@@ -225,6 +334,11 @@ class _CoursesTab extends ConsumerWidget {
                       subtitle: Text(
                         e.status.toJson(),
                         style: GoogleFonts.nunito(fontSize: 12),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        tooltip: 'Remove from course',
+                        onPressed: () => _removeFromCourse(context, ref, e.courseId),
                       ),
                     );
                   },
@@ -291,6 +405,46 @@ class _CoursesTab extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _removeFromCourse(
+    BuildContext context,
+    WidgetRef ref,
+    String courseId,
+  ) async {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Remove from course?'),
+            content: const Text(
+              'This will remove enrollment and related course-specific records for this student.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok) return;
+    try {
+      await StudentRepository().removeStudentFromCourse(
+        studentId: studentId,
+        courseId: courseId,
+      );
+      ref.invalidate(_studentProfileProvider(studentId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Removed from course')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e')),
+        );
+      }
+    }
   }
 }
 

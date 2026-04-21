@@ -122,6 +122,26 @@ class StudentRepository {
     return out;
   }
 
+  /// Batch map [userIds] -> student Bangla name for admin tables.
+  Future<Map<String, String>> getStudentNamesForUserIds(Iterable<String> userIds) async {
+    final ids = userIds.toSet().toList();
+    if (ids.isEmpty) return {};
+    final rows = await _client
+        .from(kTableUsers)
+        .select('id, full_name_bn')
+        .inFilter('id', ids);
+    final out = <String, String>{};
+    for (final raw in rows as List<dynamic>) {
+      final m = Map<String, dynamic>.from(raw as Map);
+      final id = m['id'] as String?;
+      if (id == null) continue;
+      out[id] = (m['full_name_bn'] as String?)?.trim().isNotEmpty == true
+          ? (m['full_name_bn'] as String).trim()
+          : id;
+    }
+    return out;
+  }
+
   /// Creates Auth user + `public.users` via Edge Function `create-student` (service role).
   /// Password rule: [studentPasswordFromPhoneDigits] (last 9 digits of mobile).
   Future<UserModel> addStudent(UserModel student, File? photoFile) async {
@@ -259,6 +279,85 @@ class StudentRepository {
       'is_active': false,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', id);
+  }
+
+  Future<void> removeStudentFromCourse({
+    required String studentId,
+    required String courseId,
+  }) async {
+    final res = await _client.rpc(
+      'admin_remove_student_from_course',
+      params: <String, dynamic>{
+        'p_student_id': studentId,
+        'p_course_id': courseId,
+      },
+    );
+    final m = Map<String, dynamic>.from(res as Map);
+    if (m['success'] != true) {
+      throw StateError(m['message']?.toString() ?? 'remove_from_course_failed');
+    }
+  }
+
+  Future<void> pauseStudent(String studentId) async {
+    final res = await _client.rpc(
+      'admin_pause_student',
+      params: <String, dynamic>{'p_student_id': studentId},
+    );
+    final m = Map<String, dynamic>.from(res as Map);
+    if (m['success'] != true) {
+      throw StateError(m['message']?.toString() ?? 'pause_student_failed');
+    }
+  }
+
+  Future<void> hardDeleteStudent(String studentId) async {
+    final res = await _client.rpc(
+      'admin_hard_delete_student',
+      params: <String, dynamic>{'p_student_id': studentId},
+    );
+    final m = Map<String, dynamic>.from(res as Map);
+    if (m['success'] != true) {
+      throw StateError(m['message']?.toString() ?? 'hard_delete_student_failed');
+    }
+  }
+
+  Future<String> createMaterial({
+    required String name,
+    required String courseId,
+    String? createdBy,
+  }) async {
+    final row = await _client
+        .from(kTableMaterials)
+        .insert(<String, dynamic>{
+          'name': name.trim(),
+          'course_id': courseId,
+          'created_by': createdBy,
+        })
+        .select('id')
+        .single();
+    return (row['id'] as String?) ?? '';
+  }
+
+  Future<void> saveMaterialAssignments({
+    required String materialId,
+    required Map<String, bool> checksByStudentId,
+  }) async {
+    if (checksByStudentId.isEmpty) return;
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final rows = checksByStudentId.entries
+        .map(
+          (e) => <String, dynamic>{
+            'material_id': materialId,
+            'student_id': e.key,
+            'is_checked': e.value,
+            'checked_at': e.value ? nowIso : null,
+            'updated_at': nowIso,
+          },
+        )
+        .toList();
+    await _client.from(kTableMaterialAssignments).upsert(
+          rows,
+          onConflict: 'material_id,student_id',
+        );
   }
 
   Future<void> enrollStudentInCourse(String studentId, String courseId) async {

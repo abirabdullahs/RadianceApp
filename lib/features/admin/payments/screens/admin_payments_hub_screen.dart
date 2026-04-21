@@ -402,6 +402,7 @@ class _PaymentsTab extends ConsumerStatefulWidget {
 class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
   final _voucherSearch = TextEditingController();
   final Map<String, String> _displayStudentIds = <String, String>{};
+  final Map<String, String> _studentNames = <String, String>{};
   String _displayIdsKey = '';
 
   @override
@@ -484,6 +485,17 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
         _displayStudentIds
           ..clear()
           ..addAll(map);
+      });
+    } catch (_) {}
+
+    try {
+      final names =
+          await ref.read(studentRepositoryForPaymentsProvider).getStudentNamesForUserIds(ids);
+      if (!mounted) return;
+      setState(() {
+        _studentNames
+          ..clear()
+          ..addAll(names);
       });
     } catch (_) {}
   }
@@ -664,55 +676,77 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                           ),
                         ],
                       )
-                    : ListView.builder(
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final p = filtered[i];
-                          return ListTile(
-                            onTap: () => _showPaymentDetail(p),
-                            title: Text(
-                              p.voucherNo.isEmpty ? '(ভাউচার লোড হচ্ছে)' : p.voucherNo,
-                              style: GoogleFonts.nunito(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: Text(
-                              '${_displayStudentIds[p.studentId] ?? '…'} · ${p.paymentTypeCode} · ${fmt.format(p.amountPaid)} · ${DateFormat.yMMMd().format(p.paidAt ?? DateTime.now())}',
-                              style: GoogleFonts.nunito(fontSize: 12),
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              onSelected: (v) async {
-                                if (v == 'print') {
-                                  await _printPayment(p);
-                                } else if (v == 'edit') {
-                                  if (context.mounted) {
-                                    await context.push('/admin/payments/edit/${p.id}');
-                                    if (context.mounted) {
-                                      ref.invalidate(filteredPaymentsProvider);
-                                    }
-                                  }
-                                } else if (v == 'delete') {
-                                  await _confirmDelete(p);
-                                }
-                              },
-                              itemBuilder: (ctx) => [
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('সম্পাদনা', style: GoogleFonts.hindSiliguri()),
-                                ),
-                                PopupMenuItem(
-                                  value: 'print',
-                                  child: Text('প্রিন্ট / PDF', style: GoogleFonts.hindSiliguri()),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text(
-                                    'মুছুন',
-                                    style: GoogleFonts.hindSiliguri(color: Theme.of(ctx).colorScheme.error),
+                    : SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: DataTable(
+                            columns: const [
+                              DataColumn(label: Text('Name')),
+                              DataColumn(label: Text('Month')),
+                              DataColumn(label: Text('TK')),
+                              DataColumn(label: Text('Voucher No')),
+                              DataColumn(label: Text('Student ID')),
+                              DataColumn(label: Text('Date')),
+                              DataColumn(label: Text('Actions')),
+                            ],
+                            rows: filtered.map((p) {
+                              final name = _studentNames[p.studentId] ?? '—';
+                              final month = p.forMonth == null
+                                  ? '—'
+                                  : DateFormat('MMM-yyyy').format(p.forMonth!);
+                              final voucher = p.voucherNo.isEmpty
+                                  ? '(loading)'
+                                  : p.voucherNo;
+                              final sid = _displayStudentIds[p.studentId] ?? p.studentId;
+                              final date = DateFormat.yMMMd()
+                                  .format(p.paidAt ?? DateTime.now());
+                              return DataRow(
+                                cells: [
+                                  DataCell(Text(name, style: GoogleFonts.hindSiliguri())),
+                                  DataCell(Text(month, style: GoogleFonts.nunito())),
+                                  DataCell(Text(fmt.format(p.amountPaid), style: GoogleFonts.nunito())),
+                                  DataCell(Text(voucher, style: GoogleFonts.nunito())),
+                                  DataCell(SelectableText(sid, style: GoogleFonts.nunito(fontSize: 12))),
+                                  DataCell(Text(date, style: GoogleFonts.nunito())),
+                                  DataCell(
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          tooltip: 'Detail',
+                                          onPressed: () => _showPaymentDetail(p),
+                                          icon: const Icon(Icons.visibility_outlined, size: 18),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Edit',
+                                          onPressed: () async {
+                                            if (!context.mounted) return;
+                                            await context.push('/admin/payments/edit/${p.id}');
+                                            if (context.mounted) {
+                                              ref.invalidate(filteredPaymentsProvider);
+                                            }
+                                          },
+                                          icon: const Icon(Icons.edit_outlined, size: 18),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Print',
+                                          onPressed: () => _printPayment(p),
+                                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Delete',
+                                          onPressed: () => _confirmDelete(p),
+                                          icon: const Icon(Icons.delete_outline, size: 18),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
                       ),
               ),
             ),

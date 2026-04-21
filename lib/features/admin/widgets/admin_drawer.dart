@@ -67,6 +67,14 @@ class AdminDrawer extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: Text('ম্যাটেরিয়াল', style: GoogleFonts.hindSiliguri()),
+            onTap: () {
+              Navigator.pop(context);
+              context.go('/admin/materials');
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.payment),
             title: Text('পেমেন্ট', style: GoogleFonts.hindSiliguri()),
             onTap: () {
