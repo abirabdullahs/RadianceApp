@@ -391,6 +391,19 @@ class PaymentRepository {
     return PaymentLedgerModel.fromJson(Map<String, dynamic>.from(row));
   }
 
+  Future<List<PaymentLedgerModel>> getPaymentLedgerByVoucherNo(String voucherNo) async {
+    final v = voucherNo.trim();
+    if (v.isEmpty) return const <PaymentLedgerModel>[];
+    final rows = await _client
+        .from(kTablePaymentLedger)
+        .select(_ledgerRowSelect)
+        .eq('voucher_no', v)
+        .order('created_at', ascending: true);
+    return (rows as List<dynamic>)
+        .map((e) => PaymentLedgerModel.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<PaymentLedgerModel> updatePaymentLedgerRow({
     required String id,
     required double amountDue,
@@ -725,6 +738,25 @@ class PaymentRepository {
         .select()
         .single();
     return PaymentSettingsModel.fromJson(Map<String, dynamic>.from(row));
+  }
+
+  Future<List<Map<String, String>>> listMaterialsByCourse(String courseId) async {
+    if (courseId.trim().isEmpty) return const [];
+    final rows = await _client
+        .from(kTableMaterials)
+        .select('id, name')
+        .eq('course_id', courseId)
+        .order('created_at', ascending: false);
+    return (rows as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .map(
+          (m) => <String, String>{
+            'id': (m['id'] as String?) ?? '',
+            'name': (m['name'] as String?) ?? 'Material',
+          },
+        )
+        .where((m) => (m['id'] ?? '').isNotEmpty)
+        .toList();
   }
 
   Future<MonthlyCollectionReport> getMonthlyCollectionReport({

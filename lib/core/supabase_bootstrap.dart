@@ -9,5 +9,6 @@
 ///
 /// Session persistence (stay logged in after OTP once) is handled by
 /// `supabase_flutter` automatically once URL/key are valid.
-const String kSupabaseUrlFallback = '';
-const String kSupabaseAnonKeyFallback = '';
+const String kSupabaseUrlFallback = 'https://awvmevatqceayldichsh.supabase.co';
+const String kSupabaseAnonKeyFallback =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3dm1ldmF0cWNlYXlsZGljaHNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NjEzODIsImV4cCI6MjA5MTIzNzM4Mn0.D3sXd_4-3dqehc_4o4wUHWOJdUAqwQxNIP7Ry3hEnVs';

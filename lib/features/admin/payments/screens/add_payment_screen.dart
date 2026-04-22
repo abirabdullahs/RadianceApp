@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../app/theme.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../core/student_id_display.dart';
+import '../../../../core/services/pdf_service.dart';
 import '../../../../core/supabase_client.dart';
 import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/discount_rule_model.dart';
@@ -48,7 +50,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   final _discount = TextEditingController(text: '0');
   final _paidAmount = TextEditingController();
   final _note = TextEditingController();
-  final _monthDisplay = TextEditingController();
   final _paidDateDisplay = TextEditingController();
   final _transactionRef = TextEditingController();
 
@@ -60,6 +61,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   String? _selectedCourseId;
 
   List<PaymentTypeModel> _paymentTypes = [];
+  List<_MaterialOption> _materialOptions = const [];
   PaymentSettingsModel _paymentSettings = const PaymentSettingsModel();
   final List<_FeeItemState> _feeItems = [];
 
@@ -70,7 +72,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
 
   DateTime _billingMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _paymentDate = DateTime.now();
-  final _monthsCountCtrl = TextEditingController(text: '1');
 
   PaymentMethod _paymentMethod = PaymentMethod.cash;
 
@@ -88,7 +89,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _syncMonthDisplay();
     _syncPaidDateDisplay();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadPaymentSettings();
@@ -146,6 +146,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           _feeItems.add(
             _FeeItemState(
               paymentTypeId: firstType.id,
+              forMonth: DateTime(DateTime.now().year, DateTime.now().month, 1),
               amountDueCtrl: TextEditingController(
                 text: defaultAmt.toStringAsFixed(2),
               ),
@@ -194,14 +195,30 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           _courseOptions = courses;
           _selectedCourseId = ledger.courseId;
           _billingMonth = billMonth;
-          _syncMonthDisplay();
           _paymentDate = paid;
           _syncPaidDateDisplay();
           _subtotal.text = ledger.amountDue.toStringAsFixed(2);
           _discount.text = ledger.discountAmount.toStringAsFixed(2);
-        _paidAmount.text = ledger.amountPaid.toStringAsFixed(2);
+          _paidAmount.text = ledger.amountPaid.toStringAsFixed(2);
           _note.text = ledger.note ?? '';
           _paymentMethod = PaymentMethod.fromJson(ledger.paymentMethod) ?? PaymentMethod.cash;
+          _transactionRef.text = ledger.transactionRef ?? '';
+          for (final item in _feeItems) {
+            item.dispose();
+          }
+          _feeItems
+            ..clear()
+            ..add(
+              _FeeItemState(
+                paymentTypeId: ledger.paymentTypeId,
+                forMonth: ledger.forMonth,
+                amountDueCtrl: TextEditingController(text: ledger.amountDue.toStringAsFixed(2)),
+                discountCtrl: TextEditingController(text: ledger.discountAmount.toStringAsFixed(2)),
+                fineCtrl: TextEditingController(text: ledger.fineAmount.toStringAsFixed(2)),
+                amountPaidCtrl: TextEditingController(text: ledger.amountPaid.toStringAsFixed(2)),
+                descriptionCtrl: TextEditingController(text: ledger.description ?? ''),
+              ),
+            );
           _loadingEdit = false;
         });
         return;
@@ -241,7 +258,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         _courseOptions = courses;
         _selectedCourseId = p.courseId;
         _billingMonth = p.forMonth;
-        _syncMonthDisplay();
         _paymentDate = p.paidAt ?? DateTime.now();
         _syncPaidDateDisplay();
         _subtotal.text = p.subtotal.toStringAsFixed(2);
@@ -249,6 +265,22 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         _paidAmount.text = p.amount.toStringAsFixed(2);
         _note.text = p.note ?? '';
         _paymentMethod = p.paymentMethod ?? PaymentMethod.cash;
+        for (final item in _feeItems) {
+          item.dispose();
+        }
+        _feeItems
+          ..clear()
+          ..add(
+            _FeeItemState(
+              paymentTypeId: _paymentTypes.isNotEmpty ? _paymentTypes.first.id : '',
+              forMonth: p.forMonth,
+              amountDueCtrl: TextEditingController(text: p.subtotal.toStringAsFixed(2)),
+              discountCtrl: TextEditingController(text: p.discount.toStringAsFixed(2)),
+              fineCtrl: TextEditingController(text: '0'),
+              amountPaidCtrl: TextEditingController(text: p.amount.toStringAsFixed(2)),
+              descriptionCtrl: TextEditingController(text: p.note ?? ''),
+            ),
+          );
         _loadingEdit = false;
       });
     } catch (e) {
@@ -272,6 +304,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       _feeItems.add(
         _FeeItemState(
           paymentTypeId: firstType.id,
+          forMonth: DateTime(_billingMonth.year, _billingMonth.month, 1),
           amountDueCtrl: TextEditingController(
             text: defaultAmt.toStringAsFixed(2),
           ),
@@ -315,18 +348,45 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     }
   }
 
+  bool _isMonthlyLike(PaymentTypeModel type) {
+    final code = type.code.toLowerCase();
+    return code == 'monthly' || code == 'tuition' || code == 'monthly_fee';
+  }
+
+  bool _isMaterialLike(PaymentTypeModel type) {
+    final code = type.code.toLowerCase();
+    return code == 'material' || code == 'material_fee';
+  }
+
+  Future<void> _loadMaterialsForCourse(String? courseId) async {
+    if (courseId == null || courseId.isEmpty) {
+      if (!mounted) return;
+      setState(() => _materialOptions = const []);
+      return;
+    }
+    try {
+      final rows = await ref.read(paymentRepositoryProvider).listMaterialsByCourse(courseId);
+      if (!mounted) return;
+      setState(() {
+        _materialOptions = rows
+            .map((e) => _MaterialOption(id: e['id'] ?? '', name: e['name'] ?? 'Material'))
+            .toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _materialOptions = const []);
+    }
+  }
+
   double _parseNum(String raw) => double.tryParse(raw.trim().replaceAll(',', '')) ?? 0;
 
-  double _multiGrandTotalWithMonths() {
-    final months = _parseMonthsCount();
+  double _multiGrandTotal() {
     var sum = 0.0;
     for (final item in _feeItems) {
-      final t = _typeById(item.paymentTypeId);
       final due = _parseNum(item.amountDueCtrl.text);
       final dis = _parseNum(item.discountCtrl.text);
       final fine = _parseNum(item.fineCtrl.text);
-      final line = (due - dis + fine);
-      sum += line * ((t?.isRecurring ?? false) ? months : 1);
+      sum += (due - dis + fine);
     }
     return double.parse(sum.toStringAsFixed(2));
   }
@@ -339,20 +399,12 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     _discount.dispose();
     _paidAmount.dispose();
     _note.dispose();
-    _monthDisplay.dispose();
     _paidDateDisplay.dispose();
     _transactionRef.dispose();
-    _monthsCountCtrl.dispose();
     for (final item in _feeItems) {
       item.dispose();
     }
     super.dispose();
-  }
-
-  void _syncMonthDisplay() {
-    final d = _billingMonth;
-    _monthDisplay.text =
-        '${d.year}-${d.month.toString().padLeft(2, '0')}';
   }
 
   void _syncPaidDateDisplay() {
@@ -445,6 +497,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         _selectedCourseId = null;
       }
     });
+    await _loadMaterialsForCourse(_selectedCourseId);
     await _autoApplyStudentDiscounts();
   }
 
@@ -517,20 +570,74 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     } catch (_) {}
   }
 
-  Future<void> _pickBillingMonth() async {
-    final picked = await showDatePicker(
+  Future<void> _pickBillingMonthForItem(_FeeItemState item) async {
+    final now = DateTime.now();
+    final initial = item.forMonth ?? DateTime(now.year, now.month, 1);
+    final selected = await showDialog<DateTime>(
       context: context,
-      initialDate: _billingMonth,
-      firstDate: DateTime(2020, 1),
-      lastDate: DateTime(2035, 12),
-      helpText: 'বিলিং মাস নির্বাচন করুন',
-      initialEntryMode: DatePickerEntryMode.calendar,
+      builder: (ctx) {
+        var year = initial.year;
+        var month = initial.month;
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final years = List<int>.generate(61, (i) => 2000 + i);
+            return AlertDialog(
+              title: Text('Billing Month', style: GoogleFonts.nunito(fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      value: year,
+                      decoration: _decoration('Year'),
+                      items: years
+                          .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setLocal(() => year = v);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: 12,
+                        itemBuilder: (_, idx) {
+                          final m = idx + 1;
+                          final d = DateTime(year, m, 1);
+                          final label = _monthLabel(d);
+                          final active = m == month;
+                          return ListTile(
+                            dense: true,
+                            selected: active,
+                            title: Text(label, style: GoogleFonts.nunito()),
+                            onTap: () => setLocal(() => month = m),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text('Cancel', style: GoogleFonts.nunito()),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(DateTime(year, month, 1)),
+                  child: Text('Select', style: GoogleFonts.nunito()),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _billingMonth = DateTime(picked.year, picked.month, 1);
-      _syncMonthDisplay();
-    });
+    if (selected == null || !mounted) return;
+    setState(() => item.forMonth = DateTime(selected.year, selected.month, 1));
   }
 
   Future<void> _pickPaidDate() async {
@@ -568,13 +675,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
     return double.parse((s - d).toStringAsFixed(2));
   }
 
-  int _parseMonthsCount() {
-    final n = int.tryParse(_monthsCountCtrl.text.trim()) ?? 1;
-    if (n < 1) return 1;
-    if (n > 24) return 24;
-    return n;
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_student == null) {
@@ -598,40 +698,106 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
       double notifyAmount = 0;
       String successVoucher = '';
       if (_existingLedger != null) {
-        final subtotal = _parseNum(_subtotal.text);
-        final discount = _parseNum(_discount.text);
-        final paidAmount = _parseNum(_paidAmount.text);
-        if (paidAmount <= 0) {
-          throw Exception('পরিশোধিত পরিমাণ ০ এর উপরে হতে হবে');
+        if (_feeItems.isEmpty) {
+          throw Exception('কমপক্ষে ১টি ফি যোগ করুন');
         }
-        final updated = await ref.read(paymentServiceProvider).updateRecordedPayment(
-              previous: _existingLedger!,
-              amountDue: subtotal,
+        final voucherToKeep = _existingLedger!.voucherNo.trim();
+        final sameVoucherRows = voucherToKeep.isEmpty
+            ? <PaymentLedgerModel>[_existingLedger!]
+            : await ref.read(paymentRepositoryProvider).getPaymentLedgerByVoucherNo(voucherToKeep);
+        final toDelete = sameVoucherRows.isEmpty ? <PaymentLedgerModel>[_existingLedger!] : sameVoucherRows;
+        for (final row in toDelete) {
+          await ref.read(paymentServiceProvider).deleteRecordedPayment(row.id);
+        }
+        final reqs = <PaymentRecordRequest>[];
+        for (final item in _feeItems) {
+          final t = _typeById(item.paymentTypeId);
+          if (t == null) {
+            throw Exception('ফি ধরন নির্বাচন করুন');
+          }
+          final due = _parseNum(item.amountDueCtrl.text);
+          final paid = _parseNum(item.amountPaidCtrl.text);
+          final discount = _parseNum(item.discountCtrl.text);
+          final fine = _parseNum(item.fineCtrl.text);
+          if (due <= 0) {
+            throw Exception('নির্ধারিত পরিমাণ ০ এর বেশি হতে হবে');
+          }
+          if (paid <= 0) {
+            throw Exception('পরিশোধিত পরিমাণ ০ এর উপরে হতে হবে');
+          }
+          if (discount < 0 || discount > due) {
+            throw Exception('ছাড় সঠিক নয়');
+          }
+          DateTime? month;
+          if (_isMonthlyLike(t)) {
+            month = item.forMonth;
+            if (month == null) {
+              throw Exception('Monthly fee এর জন্য Billing Month নির্বাচন করুন');
+            }
+          }
+          if (_isMaterialLike(t) && (item.materialId == null || item.materialId!.isEmpty)) {
+            throw Exception('Material fee এর জন্য Material নির্বাচন করুন');
+          }
+          final materialName = _materialOptions
+              .where((m) => m.id == item.materialId)
+              .map((m) => m.name)
+              .firstWhere((_) => true, orElse: () => '');
+          final userDesc = item.descriptionCtrl.text.trim();
+          final description = _isMaterialLike(t) && materialName.isNotEmpty
+              ? 'Material: $materialName${userDesc.isEmpty ? '' : ' | $userDesc'}'
+              : (userDesc.isEmpty ? null : userDesc);
+          reqs.add(
+            PaymentRecordRequest(
+              studentId: _existingLedger!.studentId,
+              courseId: _course!.id,
+              paymentTypeId: t.id,
+              paymentTypeCode: t.code,
+              forMonth: month,
+              amountDue: due,
+              amountPaid: paid,
               discountAmount: discount,
-              fineAmount: _existingLedger!.fineAmount,
-              amountPaid: paidAmount,
+              fineAmount: fine,
               paymentMethod: _paymentMethod.toJson(),
-              paidAt: _paymentDate,
+              transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
               note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-            );
-        notifyAmount = paidAmount;
-        successVoucher = updated.voucherNo;
+              description: description,
+              paidAt: _paymentDate,
+              createdBy: supabaseClient.auth.currentUser?.id,
+              dueDate: month == null
+                  ? DateTime(_paymentDate.year, _paymentDate.month, _paymentSettings.dueDayOfMonth)
+                  : DateTime(month.year, month.month, _paymentSettings.dueDayOfMonth),
+            ),
+          );
+        }
+        MultiPaymentRecordResult multi;
+        try {
+          multi = await ref.read(paymentServiceProvider).recordMultiFeePayments(reqs);
+        } on PostgrestException catch (e) {
+          // `payment_ledger_voucher_no_key` may block reusing voucher numbers in some DBs.
+          // Fallback to auto-generated voucher so edit flow does not fail.
+          if (e.code != '23505') rethrow;
+          final retryReqs = reqs.map((r) => r.copyWith(voucherNo: '')).toList();
+          multi = await ref.read(paymentServiceProvider).recordMultiFeePayments(retryReqs);
+        }
+        notifyAmount = multi.totalPaid;
+        successVoucher = multi.items.first.ledger.voucherNo;
+        final first = multi.items.first;
         saved = PaymentModel(
-          id: updated.id,
-          voucherNo: updated.voucherNo,
-          studentId: updated.studentId,
-          courseId: updated.courseId,
-          forMonth: updated.forMonth ?? _billingMonth,
-          amount: updated.amountPaid,
-          subtotal: updated.amountDue,
-          discount: updated.discountAmount,
-          paymentMethod: PaymentMethod.fromJson(updated.paymentMethod),
-          status: updated.status == LedgerPaymentStatus.partial
+          id: first.ledger.id,
+          voucherNo: first.ledger.voucherNo,
+          studentId: first.ledger.studentId,
+          courseId: first.ledger.courseId,
+          forMonth: first.ledger.forMonth ?? DateTime(_paymentDate.year, _paymentDate.month, 1),
+          amount: multi.totalPaid,
+          subtotal: multi.totalNetDue,
+          discount: 0,
+          paymentMethod: PaymentMethod.fromJson(first.ledger.paymentMethod),
+          status: first.ledger.status == LedgerPaymentStatus.partial
               ? PaymentStatus.partial
               : PaymentStatus.paid,
-          note: updated.note,
-          paidAt: updated.paidAt,
-          createdBy: updated.createdBy,
+          note: first.ledger.note,
+          paidAt: first.ledger.paidAt,
+          createdBy: first.ledger.createdBy,
         );
       } else if (_existingPayment != null) {
         final subtotal = _parseNum(_subtotal.text);
@@ -656,7 +822,6 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         if (_feeItems.isEmpty) {
           throw Exception('কমপক্ষে ১টি ফি যোগ করুন');
         }
-        final monthsCount = _parseMonthsCount();
         final reqs = <PaymentRecordRequest>[];
         for (final item in _feeItems) {
           final t = _typeById(item.paymentTypeId);
@@ -676,34 +841,49 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
           if (discount < 0 || discount > due) {
             throw Exception('ছাড় সঠিক নয়');
           }
-          final repeat = t.isRecurring ? monthsCount : 1;
-          for (var idx = 0; idx < repeat; idx++) {
-            final month = DateTime(_billingMonth.year, _billingMonth.month + idx, 1);
-            reqs.add(
-              PaymentRecordRequest(
-                studentId: _student!.id,
-                courseId: _course!.id,
-                paymentTypeId: t.id,
-                paymentTypeCode: t.code,
-                forMonth: t.isRecurring ? month : null,
-                amountDue: due,
-                amountPaid: paid,
-                discountAmount: discount,
-                fineAmount: fine,
-                paymentMethod: _paymentMethod.toJson(),
-                transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
-                note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-                description: item.descriptionCtrl.text.trim().isEmpty ? null : item.descriptionCtrl.text.trim(),
-                paidAt: _paymentDate,
-                createdBy: supabaseClient.auth.currentUser?.id,
-                dueDate: DateTime(
-                  month.year,
-                  month.month,
-                  _paymentSettings.dueDayOfMonth,
-                ),
-              ),
-            );
+          DateTime? selectedMonth;
+          if (_isMonthlyLike(t)) {
+            selectedMonth = item.forMonth;
+            if (selectedMonth == null) {
+              throw Exception('Monthly fee এর জন্য Billing Month নির্বাচন করুন');
+            }
           }
+          if (_isMaterialLike(t) && (item.materialId == null || item.materialId!.isEmpty)) {
+            throw Exception('Material fee এর জন্য Material নির্বাচন করুন');
+          }
+          final materialName = _materialOptions
+              .where((m) => m.id == item.materialId)
+              .map((m) => m.name)
+              .firstWhere((_) => true, orElse: () => '');
+          final userDesc = item.descriptionCtrl.text.trim();
+          final description = _isMaterialLike(t) && materialName.isNotEmpty
+              ? 'Material: $materialName${userDesc.isEmpty ? '' : ' | $userDesc'}'
+              : (userDesc.isEmpty ? null : userDesc);
+          final month = selectedMonth == null
+              ? null
+              : DateTime(selectedMonth.year, selectedMonth.month, 1);
+          reqs.add(
+            PaymentRecordRequest(
+              studentId: _student!.id,
+              courseId: _course!.id,
+              paymentTypeId: t.id,
+              paymentTypeCode: t.code,
+              forMonth: month,
+              amountDue: due,
+              amountPaid: paid,
+              discountAmount: discount,
+              fineAmount: fine,
+              paymentMethod: _paymentMethod.toJson(),
+              transactionRef: _transactionRef.text.trim().isEmpty ? null : _transactionRef.text.trim(),
+              note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+              description: description,
+              paidAt: _paymentDate,
+              createdBy: supabaseClient.auth.currentUser?.id,
+              dueDate: month == null
+                  ? DateTime(_paymentDate.year, _paymentDate.month, _paymentSettings.dueDayOfMonth)
+                  : DateTime(month.year, month.month, _paymentSettings.dueDayOfMonth),
+            ),
+          );
         }
         final multi = await ref.read(paymentServiceProvider).recordMultiFeePayments(reqs);
         if (multi.items.isEmpty) {
@@ -712,16 +892,15 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
         notifyAmount = multi.totalPaid;
         successVoucher = multi.items.first.ledger.voucherNo;
         final first = multi.items.first;
-        final firstType = _typeById(first.ledger.paymentTypeId);
         saved = PaymentModel(
           id: first.ledger.id,
           voucherNo: first.ledger.voucherNo,
           studentId: first.ledger.studentId,
           courseId: first.ledger.courseId,
-          forMonth: _billingMonth,
-          amount: first.ledger.amountPaid,
-          subtotal: first.ledger.amountDue,
-          discount: first.ledger.discountAmount,
+          forMonth: first.ledger.forMonth ?? DateTime(_paymentDate.year, _paymentDate.month, 1),
+          amount: multi.totalPaid,
+          subtotal: multi.totalNetDue,
+          discount: 0,
           paymentMethod: PaymentMethod.fromJson(first.ledger.paymentMethod),
           status: first.ledger.status == LedgerPaymentStatus.partial ? PaymentStatus.partial : PaymentStatus.paid,
           note: first.ledger.note,
@@ -733,7 +912,25 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
               saved,
               _student!,
               _course!,
-              serviceName: firstType?.name ?? firstType?.code ?? 'Payment',
+              serviceName: 'Multiple Services',
+              lineItems: multi.items
+                  .asMap()
+                  .entries
+                  .map((entry) {
+                    final idx = entry.key;
+                    final x = entry.value.ledger;
+                    final t = _typeById(x.paymentTypeId);
+                    return PaymentVoucherLineItem(
+                      serial: idx + 1,
+                      serviceName: t?.name ?? t?.code ?? x.paymentTypeCode,
+                      month: x.forMonth,
+                      amount: x.amountPaid,
+                      discount: x.discountAmount,
+                      serviceCharge: (x.amountPaid - (x.amountDue - x.discountAmount)).clamp(0, 999999999).toDouble(),
+                      voucherNo: x.voucherNo,
+                    );
+                  })
+                  .toList(),
             );
         if (!mounted) return;
         await showDialog<void>(
@@ -1008,11 +1205,12 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                   _applyCourseFeeToItems(c);
                                 }
                               });
+                              _loadMaterialsForCourse(c?.id);
                               _autoApplyStudentDiscounts();
                             },
                     ),
                   const SizedBox(height: 16),
-                  if (_existingLedger == null && _existingPayment == null) ...[
+                  ...[
                     Text(
                       'ফি আইটেম (একসাথে একাধিক)',
                       style: GoogleFonts.hindSiliguri(
@@ -1055,15 +1253,13 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                                   final t = _typeById(item.paymentTypeId);
                                                   final c = _course;
                                                   if (t != null) {
-                                                    final code = t.code.toLowerCase();
-                                                    if ((code == 'monthly' ||
-                                                            code == 'tuition' ||
-                                                            code == 'monthly_fee') &&
-                                                        c != null) {
+                                                    if (_isMonthlyLike(t) && c != null) {
                                                       final amt = c.monthlyFee
                                                           .toStringAsFixed(2);
                                                       item.amountDueCtrl.text = amt;
                                                       item.amountPaidCtrl.text = amt;
+                                                      item.forMonth ??=
+                                                          DateTime(DateTime.now().year, DateTime.now().month, 1);
                                                     } else {
                                                       final defAmt = _paymentSettings
                                                           .defaultAmountForCode(
@@ -1078,6 +1274,12 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                                             defAmt.toStringAsFixed(2);
                                                       }
                                                     }
+                                                    if (!_isMonthlyLike(t)) {
+                                                      item.forMonth = null;
+                                                    }
+                                                    if (!_isMaterialLike(t)) {
+                                                      item.materialId = null;
+                                                    }
                                                   }
                                                 });
                                                 _autoApplyStudentDiscounts();
@@ -1090,6 +1292,56 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                                       icon: const Icon(Icons.delete_outline),
                                     ),
                                   ],
+                                ),
+                                const SizedBox(height: 8),
+                                Builder(
+                                  builder: (_) {
+                                    final t = _typeById(item.paymentTypeId);
+                                    if (t == null || !_isMonthlyLike(t)) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return InkWell(
+                                      onTap: _submitting ? null : () => _pickBillingMonthForItem(item),
+                                      child: InputDecorator(
+                                        decoration: _decoration('Billing Month'),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.calendar_month_outlined, size: 18),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _monthLabel(item.forMonth ?? DateTime.now()),
+                                              style: GoogleFonts.nunito(),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Builder(
+                                  builder: (_) {
+                                    final t = _typeById(item.paymentTypeId);
+                                    if (t == null || !_isMaterialLike(t)) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      // ignore: deprecated_member_use
+                                      value: item.materialId,
+                                      decoration: _decoration('Material'),
+                                      items: _materialOptions
+                                          .map(
+                                            (m) => DropdownMenuItem<String>(
+                                              value: m.id,
+                                              child: Text(m.name, style: GoogleFonts.hindSiliguri()),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: _submitting
+                                          ? null
+                                          : (v) => setState(() => item.materialId = v),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 8),
                                 TextFormField(
@@ -1162,46 +1414,13 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: Text(
-                        'মোট নেট: ৳ ${_multiGrandTotalWithMonths().toStringAsFixed(2)}',
+                        'মোট নেট: ৳ ${_multiGrandTotal().toStringAsFixed(2)}',
                         style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
                       ),
                     ),
                     const SizedBox(height: 16),
                   ],
-                  if (_existingLedger == null && _existingPayment == null) ...[
-                    TextFormField(
-                      controller: _monthsCountCtrl,
-                      enabled: !_submitting && !_loadingEdit,
-                      keyboardType: TextInputType.number,
-                      decoration: _decoration('একসাথে কত মাস নিবেন? (Recurring fee)').copyWith(
-                        helperText: 'Monthly/Tuition type-এ প্রযোজ্য। সর্বোচ্চ 24 মাস।',
-                      ),
-                      style: GoogleFonts.nunito(),
-                      validator: (v) {
-                        final n = int.tryParse((v ?? '').trim());
-                        if (n == null || n < 1 || n > 24) {
-                          return '১ থেকে ২৪ এর মধ্যে দিন';
-                        }
-                        return null;
-                      },
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  TextFormField(
-                    controller: _monthDisplay,
-                    readOnly: true,
-                    enabled: !_submitting && !_loadingEdit,
-                    onTap: (_submitting || _loadingEdit)
-                        ? null
-                        : _pickBillingMonth,
-                    decoration: _decoration('বিলিং মাস').copyWith(
-                      suffixIcon: const Icon(Icons.calendar_month_outlined),
-                    ),
-                    style: GoogleFonts.nunito(),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_existingLedger != null || _existingPayment != null) ...[
+                  if (_existingPayment != null) ...[
                     TextFormField(
                       controller: _subtotal,
                       enabled: !_submitting,
@@ -1357,6 +1576,7 @@ class _AddPaymentScreenState extends ConsumerState<AddPaymentScreen> {
 class _FeeItemState {
   _FeeItemState({
     required this.paymentTypeId,
+    this.forMonth,
     TextEditingController? amountDueCtrl,
     TextEditingController? discountCtrl,
     TextEditingController? fineCtrl,
@@ -1369,6 +1589,8 @@ class _FeeItemState {
         descriptionCtrl = descriptionCtrl ?? TextEditingController();
 
   String paymentTypeId;
+  DateTime? forMonth;
+  String? materialId;
   final TextEditingController amountDueCtrl;
   final TextEditingController discountCtrl;
   final TextEditingController fineCtrl;
@@ -1382,4 +1604,32 @@ class _FeeItemState {
     amountPaidCtrl.dispose();
     descriptionCtrl.dispose();
   }
+}
+
+class _MaterialOption {
+  const _MaterialOption({
+    required this.id,
+    required this.name,
+  });
+
+  final String id;
+  final String name;
+}
+
+String _monthLabel(DateTime d) {
+  const names = <String>[
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return '${names[d.month - 1]} ${d.year}';
 }

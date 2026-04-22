@@ -84,6 +84,7 @@ class PaymentLedgerModel {
 
   Map<String, dynamic> toInsertJson() {
     return <String, dynamic>{
+      if (voucherNo.trim().isNotEmpty) 'voucher_no': voucherNo.trim(),
       'student_id': studentId,
       'course_id': courseId,
       'payment_type_id': paymentTypeId,

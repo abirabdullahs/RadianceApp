@@ -403,6 +403,7 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
   final _voucherSearch = TextEditingController();
   final Map<String, String> _displayStudentIds = <String, String>{};
   final Map<String, String> _studentNames = <String, String>{};
+  final Set<String> _selectedPaymentIds = <String>{};
   String _displayIdsKey = '';
 
   @override
@@ -578,6 +579,25 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     );
   }
 
+  Future<void> _printSelectedPayments(List<PaymentLedgerModel> rows) async {
+    if (rows.isEmpty) return;
+    try {
+      final pdfBytes = await ref.read(paymentVoucherPdfServiceProvider).buildBulkVoucherPdf(
+            rows,
+          );
+      if (!mounted) return;
+      await Printing.layoutPdf(
+        onLayout: (_) async => pdfBytes,
+        name: 'RCC-bulk-voucher.pdf',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e', style: GoogleFonts.hindSiliguri())),
+      );
+    }
+  }
+
   Future<void> _confirmDelete(PaymentLedgerModel p) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -632,6 +652,16 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
         });
         final filtered =
             q.isEmpty ? list : list.where((p) => _paymentMatchesQuery(p, q)).toList();
+        final validIds = filtered.map((e) => e.id).toSet();
+        _selectedPaymentIds.removeWhere((id) => !validIds.contains(id));
+        final selectedRows =
+            filtered.where((p) => _selectedPaymentIds.contains(p.id)).toList();
+        final voucherCounts = <String, int>{};
+        for (final p in filtered) {
+          final key = p.voucherNo.trim();
+          if (key.isEmpty) continue;
+          voucherCounts[key] = (voucherCounts[key] ?? 0) + 1;
+        }
         if (list.isEmpty) {
           return Center(
             child: Text('কোনো পেমেন্ট নেই', style: GoogleFonts.hindSiliguri()),
@@ -641,18 +671,46 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: TextField(
-                controller: _voucherSearch,
-                decoration: InputDecoration(
-                  labelText: 'ভাউচার বা স্টুডেন্ট আইডি',
-                  hintText: 'ভাউচার নম্বর অথবা শেষ ৯ ডিজিট',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _voucherSearch,
+                    decoration: InputDecoration(
+                      labelText: 'ভাউচার বা স্টুডেন্ট আইডি',
+                      hintText: 'ভাউচার নম্বর অথবা শেষ ৯ ডিজিট',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                      ),
+                    ),
+                    style: GoogleFonts.nunito(),
+                    onChanged: (_) => setState(() {}),
                   ),
-                ),
-                style: GoogleFonts.nunito(),
-                onChanged: (_) => setState(() {}),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        'Selected: ${selectedRows.length}',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _selectedPaymentIds.isEmpty
+                            ? null
+                            : () => setState(() => _selectedPaymentIds.clear()),
+                        child: Text('Clear', style: GoogleFonts.nunito()),
+                      ),
+                      const Spacer(),
+                      FilledButton.icon(
+                        onPressed: selectedRows.isEmpty
+                            ? null
+                            : () => _printSelectedPayments(selectedRows),
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        label: Text('Print Selected', style: GoogleFonts.nunito()),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -686,6 +744,7 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                               DataColumn(label: Text('Month')),
                               DataColumn(label: Text('TK')),
                               DataColumn(label: Text('Voucher No')),
+                              DataColumn(label: Text('Voucher Group')),
                               DataColumn(label: Text('Student ID')),
                               DataColumn(label: Text('Date')),
                               DataColumn(label: Text('Actions')),
@@ -695,18 +754,67 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                               final month = p.forMonth == null
                                   ? '—'
                                   : DateFormat('MMM-yyyy').format(p.forMonth!);
-                              final voucher = p.voucherNo.isEmpty
+                              final voucherRaw = p.voucherNo.isEmpty
                                   ? '(loading)'
                                   : p.voucherNo;
+                              final itemCount = voucherCounts[p.voucherNo.trim()] ?? 1;
                               final sid = _displayStudentIds[p.studentId] ?? p.studentId;
                               final date = DateFormat.yMMMd()
                                   .format(p.paidAt ?? DateTime.now());
                               return DataRow(
+                                selected: _selectedPaymentIds.contains(p.id),
+                                onSelectChanged: (checked) {
+                                  setState(() {
+                                    if (checked == true) {
+                                      _selectedPaymentIds.add(p.id);
+                                    } else {
+                                      _selectedPaymentIds.remove(p.id);
+                                    }
+                                  });
+                                },
                                 cells: [
                                   DataCell(Text(name, style: GoogleFonts.hindSiliguri())),
                                   DataCell(Text(month, style: GoogleFonts.nunito())),
                                   DataCell(Text(fmt.format(p.amountPaid), style: GoogleFonts.nunito())),
-                                  DataCell(Text(voucher, style: GoogleFonts.nunito())),
+                                  DataCell(Text(voucherRaw, style: GoogleFonts.nunito())),
+                                  DataCell(
+                                    itemCount > 1
+                                        ? Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  voucherRaw,
+                                                  style: GoogleFonts.nunito(),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .primary
+                                                      .withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(999),
+                                                ),
+                                                child: Text(
+                                                  '$itemCount items',
+                                                  style: GoogleFonts.nunito(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : Text('Single', style: GoogleFonts.nunito()),
+                                  ),
                                   DataCell(SelectableText(sid, style: GoogleFonts.nunito(fontSize: 12))),
                                   DataCell(Text(date, style: GoogleFonts.nunito())),
                                   DataCell(

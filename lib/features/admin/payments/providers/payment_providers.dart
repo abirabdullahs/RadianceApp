@@ -7,6 +7,7 @@ import '../../../../core/services/sms_service.dart';
 import '../../students/repositories/student_repository.dart';
 import '../repositories/payment_repository.dart';
 import '../services/payment_service.dart';
+import '../services/payment_voucher_pdf_service.dart';
 
 part 'payment_providers.g.dart';
 
@@ -32,6 +33,12 @@ StudentRepository studentRepositoryForPayments(StudentRepositoryForPaymentsRef r
 
 final paymentServiceProvider = Provider<PaymentService>((ref) {
   return PaymentService(repository: ref.read(paymentRepositoryProvider));
+});
+
+final paymentVoucherPdfServiceProvider = Provider<PaymentVoucherPdfService>((ref) {
+  return PaymentVoucherPdfService(
+    pdfService: ref.read(pdfServiceProvider),
+  );
 });
 
 final paymentDueEdgeServiceProvider = Provider<PaymentDueEdgeService>((ref) {

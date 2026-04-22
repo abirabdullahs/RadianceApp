@@ -64,6 +64,8 @@ class PdfService {
     UserModel student,
     CourseModel course, {
     String? serviceName,
+    List<PaymentVoucherLineItem>? lineItems,
+    bool hideMainVoucherNo = false,
     Uint8List? logoBytes, // accepted for API compat; not rendered
     String? institutionAddress,
     String? institutionPhone,
@@ -74,7 +76,9 @@ class PdfService {
     final fonts = await _loadFonts();
 
     final paidDate   = payment.paidAt ?? DateTime.now();
-    final monthLabel = _fmtMonth(payment.forMonth);
+    final monthLabel = lineItems != null && lineItems.isNotEmpty
+        ? _buildMonthSummary(lineItems)
+        : _fmtMonth(payment.forMonth);
     final method     = payment.paymentMethod?.name ?? '—';
     final total      = payment.amount;
     final inWords    = _amountInWordsTaka(total);
@@ -101,7 +105,11 @@ class PdfService {
           children: [
             _buildHeader(fonts, address: address, phone: phone),
             pw.SizedBox(height: 16),
-            _buildTitleRow(fonts, payment.voucherNo, paidDate),
+            _buildTitleRow(
+              fonts,
+              hideMainVoucherNo ? '' : payment.voucherNo,
+              paidDate,
+            ),
             pw.SizedBox(height: 14),
             _buildInfoGrid(
               fonts,
@@ -122,6 +130,7 @@ class PdfService {
               total,
               inWords,
               serviceName: svc,
+              lineItems: lineItems,
             ),
             if (payment.note?.trim().isNotEmpty ?? false) ...[
               pw.SizedBox(height: 12),
@@ -418,10 +427,24 @@ pw.Widget _buildAmountTable(
   PaymentModel payment,
   double total,
   String words,
-  {required String serviceName}
+  {
+  required String serviceName,
+  List<PaymentVoucherLineItem>? lineItems,
+}
 ) {
-  final serviceChargeRaw = total - (payment.subtotal - payment.discount);
-  final serviceCharge = serviceChargeRaw <= 0 ? 0.0 : serviceChargeRaw;
+  final rows = (lineItems == null || lineItems.isEmpty)
+      ? <PaymentVoucherLineItem>[
+          PaymentVoucherLineItem(
+            serial: 1,
+            serviceName: serviceName,
+            month: payment.forMonth,
+            amount: payment.amount,
+            discount: payment.discount,
+            serviceCharge: (total - (payment.subtotal - payment.discount)).clamp(0, 999999999).toDouble(),
+            voucherNo: payment.voucherNo,
+          ),
+        ]
+      : lineItems;
   return pw.Container(
     decoration: pw.BoxDecoration(
       border: pw.Border.all(color: _ink, width: 0.6),
@@ -432,20 +455,24 @@ pw.Widget _buildAmountTable(
           border: pw.TableBorder.all(color: _ink, width: 0.35),
           columnWidths: const {
             0: pw.FixedColumnWidth(28),
-            1: pw.FlexColumnWidth(3),
-            2: pw.FixedColumnWidth(50),
-            3: pw.FixedColumnWidth(52),
-            4: pw.FixedColumnWidth(62),
+            1: pw.FlexColumnWidth(2.2),
+            2: pw.FlexColumnWidth(1.8),
+            3: pw.FixedColumnWidth(48),
+            4: pw.FixedColumnWidth(48),
+            5: pw.FixedColumnWidth(52),
           },
           children: [
             _memoHeaderRow(f),
-            _memoItemRow(
-              f,
-              slNo: '1',
-              feeName: serviceName,
-              amount: _money(payment.subtotal),
-              discount: _money(payment.discount),
-              serviceCharge: _money(serviceCharge),
+            ...rows.map(
+              (r) => _memoItemRow(
+                f,
+                slNo: '${r.serial}',
+                feeName: _formatServiceLabel(r.serviceName, r.month ?? payment.forMonth),
+                voucherNo: _latinOnly(r.voucherNo, fallback: '-'),
+                amount: _money(r.amount),
+                discount: _money(r.discount),
+                serviceCharge: _money(r.serviceCharge),
+              ),
             ),
           ],
         ),
@@ -532,6 +559,7 @@ pw.TableRow _memoHeaderRow(_PdfFonts f) {
     children: [
       h('SL', align: pw.Alignment.center),
       h('SERVICE NAME'),
+      h('VOUCHER NO'),
       h('AMOUNT', align: pw.Alignment.centerRight),
       h('DISCOUNT', align: pw.Alignment.centerRight),
       h('SERVICE CHARGE', align: pw.Alignment.centerRight),
@@ -543,6 +571,7 @@ pw.TableRow _memoItemRow(
   _PdfFonts f, {
   required String slNo,
   required String feeName,
+  required String voucherNo,
   required String amount,
   required String discount,
   required String serviceCharge,
@@ -561,6 +590,7 @@ pw.TableRow _memoItemRow(
     children: [
       c(slNo, align: pw.Alignment.center),
       c(_latinOnly(feeName, fallback: 'Payment')),
+      c(voucherNo),
       c(amount, align: pw.Alignment.centerRight),
       c(discount, align: pw.Alignment.centerRight),
       c(serviceCharge, align: pw.Alignment.centerRight),
@@ -723,6 +753,41 @@ String _formatServiceLabel(String? serviceName, DateTime forMonth) {
     return 'Monthly Fee($m)';
   }
   return _toTitleCase(raw);
+}
+
+String _buildMonthSummary(List<PaymentVoucherLineItem> items) {
+  final months = items
+      .map((e) => e.month)
+      .whereType<DateTime>()
+      .map((d) => DateTime(d.year, d.month, 1))
+      .toSet()
+      .toList()
+    ..sort((a, b) => a.compareTo(b));
+  if (months.isEmpty) return '-';
+  if (months.length == 1) return _fmtMonth(months.first);
+  return '${_fmtMonth(months.first)} - ${_fmtMonth(months.last)}';
+}
+
+class PaymentVoucherLineItem {
+  const PaymentVoucherLineItem({
+    required this.serial,
+    required this.serviceName,
+    required this.month,
+    required this.amount,
+    required this.discount,
+    required this.serviceCharge,
+    this.voucherNo = '',
+  });
+
+  final int serial;
+  final String serviceName;
+  final DateTime? month;
+  final double amount;
+  final double discount;
+  final double serviceCharge;
+  final String voucherNo;
+
+  double get netTotal => amount - discount + serviceCharge;
 }
 
 String _buildPaymentQrPayload(PaymentModel p) {

@@ -21,6 +21,7 @@ class PaymentRecordRequest {
     this.paidAt,
     this.createdBy,
     this.dueDate,
+    this.voucherNo,
   });
 
   final String studentId;
@@ -39,6 +40,47 @@ class PaymentRecordRequest {
   final DateTime? paidAt;
   final String? createdBy;
   final DateTime? dueDate;
+  final String? voucherNo;
+
+  PaymentRecordRequest copyWith({
+    String? studentId,
+    String? courseId,
+    String? paymentTypeId,
+    String? paymentTypeCode,
+    DateTime? forMonth,
+    double? amountDue,
+    double? amountPaid,
+    double? discountAmount,
+    double? fineAmount,
+    String? paymentMethod,
+    String? transactionRef,
+    String? note,
+    String? description,
+    DateTime? paidAt,
+    String? createdBy,
+    DateTime? dueDate,
+    String? voucherNo,
+  }) {
+    return PaymentRecordRequest(
+      studentId: studentId ?? this.studentId,
+      courseId: courseId ?? this.courseId,
+      paymentTypeId: paymentTypeId ?? this.paymentTypeId,
+      paymentTypeCode: paymentTypeCode ?? this.paymentTypeCode,
+      forMonth: forMonth ?? this.forMonth,
+      amountDue: amountDue ?? this.amountDue,
+      amountPaid: amountPaid ?? this.amountPaid,
+      discountAmount: discountAmount ?? this.discountAmount,
+      fineAmount: fineAmount ?? this.fineAmount,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      transactionRef: transactionRef ?? this.transactionRef,
+      note: note ?? this.note,
+      description: description ?? this.description,
+      paidAt: paidAt ?? this.paidAt,
+      createdBy: createdBy ?? this.createdBy,
+      dueDate: dueDate ?? this.dueDate,
+      voucherNo: voucherNo ?? this.voucherNo,
+    );
+  }
 }
 
 class PaymentRecordResult {
@@ -92,7 +134,7 @@ class PaymentService {
     final ledger = await _repository.addPaymentLedger(
       PaymentLedgerModel(
         id: '',
-        voucherNo: '',
+        voucherNo: request.voucherNo?.trim() ?? '',
         studentId: request.studentId,
         courseId: request.courseId,
         paymentTypeId: request.paymentTypeId,
@@ -176,6 +218,21 @@ class PaymentService {
     );
   }
 
+  /// Replaces an existing recorded payment with a fully editable payload while
+  /// keeping the same voucher number.
+  Future<PaymentRecordResult> replaceRecordedPayment({
+    required PaymentLedgerModel previous,
+    required PaymentRecordRequest request,
+  }) async {
+    await deleteRecordedPayment(previous.id);
+    return recordPayment(
+      request.copyWith(
+        voucherNo: previous.voucherNo,
+        createdBy: previous.createdBy ?? request.createdBy,
+      ),
+    );
+  }
+
   Future<MultiPaymentRecordResult> recordMultiFeePayments(
     List<PaymentRecordRequest> requests,
   ) async {
@@ -187,10 +244,11 @@ class PaymentService {
     var totalPaid = 0.0;
     var totalAdvanceAdded = 0.0;
     for (final req in requests) {
-      final res = await recordPayment(req);
+      final effectiveReq = req;
+      final res = await recordPayment(effectiveReq);
       items.add(res);
       totalNetDue += res.netDue;
-      totalPaid += req.amountPaid;
+      totalPaid += effectiveReq.amountPaid;
       totalAdvanceAdded += res.newAdvanceAmount;
     }
     return MultiPaymentRecordResult(
