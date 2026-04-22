@@ -14,7 +14,6 @@ import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_model.dart';
-import '../../../../shared/models/payment_schedule_model.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
 import '../../courses/repositories/course_repository.dart';
@@ -45,44 +44,94 @@ final filteredPaymentsProvider =
 final filteredDuesEnrichedProvider =
     FutureProvider.autoDispose<List<_DueRow>>((ref) async {
   final f = ref.watch(paymentHubFiltersProvider);
-  final dues = await ref.read(paymentRepositoryProvider).getPaymentSchedule(
-        courseId: f.courseId,
-        month: f.month,
-        onlyOpen: true,
-      );
-  final open = dues;
+  if (f.courseId == null || f.month == null) return const <_DueRow>[];
+
+  final month = DateTime(f.month!.year, f.month!.month, 1);
+  final paymentRepo = ref.read(paymentRepositoryProvider);
+  final studentRepo = StudentRepository();
+  final courseRepo = CourseRepository();
+
+  // Students enrolled in this course (only active + currently active profile).
+  final students = (await studentRepo.getStudents(courseId: f.courseId))
+      .where((s) => s.isActive)
+      .toList();
+  if (students.isEmpty) return const <_DueRow>[];
+
+  // Anyone who has at least one monthly-like ledger entry in selected month is "paid".
+  final paidMonthly = await paymentRepo.getPaymentLedger(
+    courseId: f.courseId,
+    month: month,
+    paymentTypeCode: 'monthly',
+  );
+  final paidMonthlyFee = await paymentRepo.getPaymentLedger(
+    courseId: f.courseId,
+    month: month,
+    paymentTypeCode: 'monthly_fee',
+  );
+  final paidTuition = await paymentRepo.getPaymentLedger(
+    courseId: f.courseId,
+    month: month,
+    paymentTypeCode: 'tuition',
+  );
+  final paidIds = <String>{
+    ...paidMonthly.map((e) => e.studentId),
+    ...paidMonthlyFee.map((e) => e.studentId),
+    ...paidTuition.map((e) => e.studentId),
+  };
+
+  String courseName = f.courseId!;
+  double courseMonthlyFee = 0;
+  try {
+    final c = await courseRepo.getCourseById(f.courseId!);
+    courseName = c.name;
+    courseMonthlyFee = c.monthlyFee;
+  } catch (_) {}
+
+  final notPaid = students.where((s) => !paidIds.contains(s.id)).toList();
+  notPaid.sort((a, b) => a.fullNameBn.compareTo(b.fullNameBn));
+
   final sRepo = StudentRepository();
-  final cRepo = CourseRepository();
   final rows = <_DueRow>[];
-  for (final d in open) {
-    var name = d.studentId;
+  for (final s in notPaid) {
+    var name = s.fullNameBn;
     var phone = '';
-    var cname = d.courseId;
+    var sid = s.id;
     try {
-      final u = await sRepo.getStudentById(d.studentId);
+      final u = await sRepo.getStudentById(s.id);
       name = u.fullNameBn;
       phone = u.phone;
+      sid = u.id;
     } catch (_) {}
-    try {
-      cname = (await cRepo.getCourseById(d.courseId)).name;
-    } catch (_) {}
-    rows.add(_DueRow(due: d, studentName: name, studentPhone: phone, courseName: cname));
+    rows.add(
+      _DueRow(
+        studentId: sid,
+        studentName: name,
+        studentPhone: phone,
+        courseName: courseName,
+        monthlyAmount: courseMonthlyFee,
+        month: month,
+      ),
+    );
   }
   return rows;
 });
 
 class _DueRow {
   const _DueRow({
-    required this.due,
+    required this.studentId,
     required this.studentName,
     required this.studentPhone,
     required this.courseName,
+    required this.monthlyAmount,
+    required this.month,
   });
 
-  final PaymentScheduleModel due;
+  final String studentId;
   final String studentName;
   final String studentPhone;
   final String courseName;
+  final double monthlyAmount;
+  final DateTime month;
 }
 
 /// Tabs: recent payments | open dues.
@@ -870,75 +919,25 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
 class _DuesTab extends ConsumerWidget {
   const _DuesTab();
 
-  Future<void> _sendReminder(BuildContext context, WidgetRef ref, _DueRow row) async {
-    final d = row.due;
-    final amount = d.remainingAmount > 0 ? d.remainingAmount : d.amount;
-    final monthLabel = d.forMonth == null ? 'এই' : DateFormat.yMMMM().format(d.forMonth!);
-    try {
-      await ref.read(smsServiceProvider).notifyDueReminder(
-            phone: row.studentPhone,
-            studentName: row.studentName,
-            monthLabel: monthLabel,
-            feeTypeLabel: d.paymentTypeCode,
-            amountLabel: amount.toStringAsFixed(0),
-          );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('SMS reminder queued', style: GoogleFonts.hindSiliguri())),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
-    }
-  }
-
-  Future<void> _sendBulkReminder(
-    BuildContext context,
-    WidgetRef ref,
-    List<_DueRow> rows,
-  ) async {
-    if (rows.isEmpty) return;
-    var sent = 0;
-    for (final r in rows) {
-      if (r.studentPhone.isEmpty) continue;
-      final d = r.due;
-      final amount = d.remainingAmount > 0 ? d.remainingAmount : d.amount;
-      final monthLabel =
-          d.forMonth == null ? 'এই' : DateFormat.yMMMM().format(d.forMonth!);
-      try {
-        await ref.read(smsServiceProvider).notifyDueReminder(
-              phone: r.studentPhone,
-              studentName: r.studentName,
-              monthLabel: monthLabel,
-              feeTypeLabel: d.paymentTypeCode,
-              amountLabel: amount.toStringAsFixed(0),
-            );
-        sent++;
-      } catch (_) {}
-    }
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Bulk reminder queued: $sent/${rows.length}',
-            style: GoogleFonts.hindSiliguri(),
-          ),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(filteredDuesEnrichedProvider);
+    final filters = ref.watch(paymentHubFiltersProvider);
     final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
     return async.when(
       data: (rows) {
+        if (filters.courseId == null || filters.month == null) {
+          return Center(
+            child: Text(
+              'বকেয়া দেখার জন্য কোর্স এবং মাস নির্বাচন করুন',
+              style: GoogleFonts.hindSiliguri(),
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
         if (rows.isEmpty) {
           return Center(
-            child: Text('কোনো বকেয়া নেই', style: GoogleFonts.hindSiliguri()),
+            child: Text('এই কোর্স/মাসে সবাই Monthly payment করেছে', style: GoogleFonts.hindSiliguri()),
           );
         }
         return RefreshIndicator(
@@ -954,40 +953,36 @@ class _DuesTab extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Total due: ${fmt.format(rows.fold<double>(0, (a, r) => a + (r.due.remainingAmount > 0 ? r.due.remainingAmount : r.due.amount)))}',
+                        'Monthly না দেয়া শিক্ষার্থী: ${rows.length} জন',
                         style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
                       ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => _sendBulkReminder(context, ref, rows),
-                      icon: const Icon(Icons.sms),
-                      label: Text('Bulk SMS', style: GoogleFonts.hindSiliguri()),
                     ),
                   ],
                 ),
               ),
               ...List.generate(rows.length, (i) {
                 final r = rows[i];
-                final d = r.due;
                 return ListTile(
+                  leading: CircleAvatar(
+                    radius: 14,
+                    child: Text('${i + 1}', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                  ),
                   title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
                   subtitle: Text(
-                    '${r.courseName} · ${d.forMonth == null ? '—' : DateFormat.yMMMM().format(d.forMonth!)} · ${d.status.name}',
+                    '${r.courseName} · ${DateFormat.yMMMM().format(r.month)}',
                     style: GoogleFonts.nunito(fontSize: 12),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        fmt.format(d.remainingAmount > 0 ? d.remainingAmount : d.amount),
+                        fmt.format(r.monthlyAmount),
                         style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
                       ),
-                      IconButton(
-                        tooltip: 'SMS reminder',
-                        icon: const Icon(Icons.sms_outlined),
-                        onPressed: r.studentPhone.isEmpty
-                            ? null
-                            : () => _sendReminder(context, ref, r),
+                      const SizedBox(width: 4),
+                      OutlinedButton(
+                        onPressed: () => context.push('/admin/payments/add', extra: r.studentId),
+                        child: Text('Clear Payment', style: GoogleFonts.nunito(fontSize: 12)),
                       ),
                     ],
                   ),
