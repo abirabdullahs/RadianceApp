@@ -198,6 +198,14 @@ class _AttendanceTakingScreenState extends ConsumerState<AttendanceTakingScreen>
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
+              if (!mounted || _sessionId == null) return;
+              context.push('/admin/attendance/edit/${_sessionId!}');
+            },
+            child: Text('✏️ সম্পাদনা', style: GoogleFonts.hindSiliguri()),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
               if (!mounted) return;
               final firstAbsent = _students.indexWhere((s) => _answers[s.id] == 'absent');
               if (firstAbsent >= 0) {

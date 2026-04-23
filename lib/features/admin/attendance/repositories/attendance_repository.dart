@@ -272,47 +272,81 @@ class AttendanceRepository {
   }
 
   Future<List<AttendanceEditableRecord>> getEditableRecords(String sessionId) async {
+    final session = await getSessionById(sessionId);
+    if (session == null) return const <AttendanceEditableRecord>[];
+    final courseId = session['course_id'] as String? ?? '';
+    if (courseId.isEmpty) return const <AttendanceEditableRecord>[];
+
+    final students = await getActiveStudentsForCourse(courseId);
     final rows = await _client
         .from(kTableAttendanceRecords)
-        .select('id, student_id, status, users!inner(full_name_bn, student_id)')
-        .eq('session_id', sessionId)
-        .order('student_id', ascending: true);
-    return (rows as List<dynamic>).map((raw) {
+        .select('id, student_id, status')
+        .eq('session_id', sessionId);
+    final byStudent = <String, Map<String, dynamic>>{};
+    for (final raw in rows as List<dynamic>) {
       final m = Map<String, dynamic>.from(raw as Map);
-      final u = _relatedUserMap(m['users']);
-      return AttendanceEditableRecord(
-        recordId: m['id'] as String? ?? '',
-        studentId: m['student_id'] as String? ?? '',
-        studentNameBn: u['full_name_bn'] as String? ?? '—',
-        studentCode: u['student_id'] as String?,
-        status: m['status'] as String? ?? 'absent',
+      final sid = m['student_id'] as String? ?? '';
+      if (sid.isEmpty) continue;
+      byStudent[sid] = m;
+    }
+
+    final out = <AttendanceEditableRecord>[];
+    for (final s in students) {
+      final existing = byStudent[s.id];
+      out.add(
+        AttendanceEditableRecord(
+          recordId: existing?['id'] as String? ?? '',
+          studentId: s.id,
+          studentNameBn: s.fullNameBn,
+          studentCode: s.studentId,
+          status: existing?['status'] as String? ?? 'absent',
+        ),
       );
-    }).toList();
+    }
+    out.sort((a, b) => a.studentNameBn.compareTo(b.studentNameBn));
+    return out;
   }
 
-  Future<void> updateAttendanceRecordsWithLog({
+  Future<int> updateAttendanceRecordsWithLog({
     required String sessionId,
-    required Map<String, String> nextStatusByRecordId,
+    required Map<String, String> nextStatusByStudentId,
     required String changedBy,
     String? reason,
   }) async {
     final rows = await _client
         .from(kTableAttendanceRecords)
-        .select('id, status')
+        .select('id, student_id, status')
         .eq('session_id', sessionId);
-
+    final byStudent = <String, Map<String, dynamic>>{};
     for (final raw in rows as List<dynamic>) {
       final m = Map<String, dynamic>.from(raw as Map);
-      final recordId = m['id'] as String? ?? '';
-      final oldStatus = m['status'] as String? ?? 'absent';
-      final nextStatus = nextStatusByRecordId[recordId];
-      if (nextStatus == null || nextStatus == oldStatus) continue;
+      final sid = m['student_id'] as String? ?? '';
+      if (sid.isEmpty) continue;
+      byStudent[sid] = m;
+    }
 
-      await _client
+    var changedCount = 0;
+    for (final entry in nextStatusByStudentId.entries) {
+      final studentId = entry.key;
+      final nextStatus = entry.value;
+      final current = byStudent[studentId];
+      final oldStatus = current?['status'] as String? ?? 'absent';
+      if (nextStatus == oldStatus && current != null) continue;
+
+      final saved = await _client
           .from(kTableAttendanceRecords)
-          .update({'status': nextStatus})
-          .eq('id', recordId);
-
+          .upsert(
+            <String, dynamic>{
+              'session_id': sessionId,
+              'student_id': studentId,
+              'status': nextStatus,
+            },
+            onConflict: 'session_id,student_id',
+          )
+          .select('id, status')
+          .single();
+      final recordId = saved['id'] as String? ?? '';
+      if (recordId.isEmpty || oldStatus == nextStatus) continue;
       await _client.from(kTableAttendanceEditLog).insert({
         'record_id': recordId,
         'old_status': oldStatus,
@@ -320,7 +354,9 @@ class AttendanceRepository {
         'changed_by': changedBy,
         'reason': reason,
       });
+      changedCount += 1;
     }
+    return changedCount;
   }
 
   Future<AttendanceDailyReport> getDailyReportBySession(String sessionId) async {

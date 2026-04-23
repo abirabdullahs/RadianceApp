@@ -20,6 +20,7 @@ class AttendanceEditScreen extends ConsumerStatefulWidget {
 class _AttendanceEditScreenState extends ConsumerState<AttendanceEditScreen> {
   final TextEditingController _reasonCtrl = TextEditingController();
   bool _saving = false;
+  int _reloadSeed = 0;
 
   @override
   void dispose() {
@@ -33,7 +34,7 @@ class _AttendanceEditScreenState extends ConsumerState<AttendanceEditScreen> {
     return AdminResponsiveScaffold(
       title: Text('উপস্থিতি সম্পাদনা', style: GoogleFonts.hindSiliguri()),
       body: FutureBuilder<_EditData>(
-        future: _load(repo, widget.sessionId),
+        future: _load(repo, widget.sessionId, _reloadSeed),
         builder: (context, snap) {
           if (!snap.hasData) {
             if (snap.hasError) return Center(child: Text('${snap.error}'));
@@ -50,7 +51,11 @@ class _AttendanceEditScreenState extends ConsumerState<AttendanceEditScreen> {
     );
   }
 
-  Future<_EditData> _load(AttendanceRepository repo, String sessionId) async {
+  Future<_EditData> _load(
+    AttendanceRepository repo,
+    String sessionId,
+    int _,
+  ) async {
     final session = await repo.getSessionById(sessionId);
     final records = await repo.getEditableRecords(sessionId);
     if (session == null) {
@@ -64,17 +69,24 @@ class _AttendanceEditScreenState extends ConsumerState<AttendanceEditScreen> {
     if (uid == null) return;
     setState(() => _saving = true);
     try {
-      await ref.read(attendanceRepositoryProvider).updateAttendanceRecordsWithLog(
+      final changedCount = await ref.read(attendanceRepositoryProvider).updateAttendanceRecordsWithLog(
             sessionId: widget.sessionId,
-            nextStatusByRecordId: statuses,
+            nextStatusByStudentId: statuses,
             changedBy: uid,
             reason: _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('পরিবর্তন সংরক্ষণ হয়েছে', style: GoogleFonts.hindSiliguri())),
+        SnackBar(
+          content: Text(
+            changedCount == 0
+                ? 'কোনো পরিবর্তন পাওয়া যায়নি'
+                : 'পরিবর্তন সংরক্ষণ হয়েছে ($changedCount টি)',
+            style: GoogleFonts.hindSiliguri(),
+          ),
+        ),
       );
-      Navigator.of(context).pop();
+      setState(() => _reloadSeed++);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -110,16 +122,32 @@ class _EditorBody extends StatefulWidget {
 }
 
 class _EditorBodyState extends State<_EditorBody> {
-  late final Map<String, String> _statusByRecordId = {
-    for (final r in widget.data.records) r.recordId: r.status,
-  };
+  late Map<String, String> _statusByStudentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusByStudentId = {
+      for (final r in widget.data.records) r.studentId: r.status,
+    };
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditorBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.records != widget.data.records) {
+      _statusByStudentId = {
+        for (final r in widget.data.records) r.studentId: r.status,
+      };
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final date = DateTime.tryParse(widget.data.session['date'] as String? ?? '');
-    final total = _statusByRecordId.length;
-    final present = _statusByRecordId.values.where((s) => s == 'present' || s == 'late').length;
-    final absent = _statusByRecordId.values.where((s) => s == 'absent').length;
+    final total = _statusByStudentId.length;
+    final present = _statusByStudentId.values.where((s) => s == 'present' || s == 'late').length;
+    final absent = _statusByStudentId.values.where((s) => s == 'absent').length;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -133,38 +161,66 @@ class _EditorBodyState extends State<_EditorBody> {
           'উপস্থিত: $present  |  অনুপস্থিত: $absent  |  মোট: $total',
           style: GoogleFonts.hindSiliguri(color: Colors.grey.shade700),
         ),
-        const SizedBox(height: 12),
-        for (final r in widget.data.records) ...[
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(r.studentNameBn, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
-                        Text(r.studentCode ?? '—', style: GoogleFonts.nunito(fontSize: 12, color: Colors.grey.shade700)),
-                      ],
-                    ),
-                  ),
-                  DropdownButton<String>(
-                    value: _statusByRecordId[r.recordId] ?? 'absent',
-                    items: const [
-                      DropdownMenuItem(value: 'present', child: Text('উপস্থিত')),
-                      DropdownMenuItem(value: 'absent', child: Text('অনুপস্থিত')),
-                      DropdownMenuItem(value: 'late', child: Text('দেরি')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _statusByRecordId[r.recordId] = v);
-                    },
-                  ),
-                ],
-              ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: widget.saving ? null : () => widget.onSave(_statusByStudentId),
+            icon: const Icon(Icons.save_outlined),
+            label: Text(
+              widget.saving ? 'সংরক্ষণ হচ্ছে...' : 'Save Changes',
+              style: GoogleFonts.hindSiliguri(color: Colors.white),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: context.themePrimary,
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
+        ),
+        const SizedBox(height: 12),
+        for (final entry in widget.data.records.asMap().entries) ...[
+          (() {
+            final i = entry.key;
+            final r = entry.value;
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      child: Text(
+                        '${i + 1}',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(r.studentNameBn, style: GoogleFonts.hindSiliguri(fontWeight: FontWeight.w700)),
+                          Text(r.studentCode ?? '—', style: GoogleFonts.nunito(fontSize: 12, color: Colors.grey.shade700)),
+                        ],
+                      ),
+                    ),
+                    DropdownButton<String>(
+                      value: _statusByStudentId[r.studentId] ?? 'absent',
+                      items: const [
+                        DropdownMenuItem(value: 'present', child: Text('উপস্থিত')),
+                        DropdownMenuItem(value: 'absent', child: Text('অনুপস্থিত')),
+                        DropdownMenuItem(value: 'late', child: Text('দেরি')),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _statusByStudentId[r.studentId] = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          })(),
           const SizedBox(height: 6),
         ],
         const SizedBox(height: 10),
@@ -182,7 +238,7 @@ class _EditorBodyState extends State<_EditorBody> {
         SizedBox(
           width: double.infinity,
           child: FilledButton(
-            onPressed: widget.saving ? null : () => widget.onSave(_statusByRecordId),
+            onPressed: widget.saving ? null : () => widget.onSave(_statusByStudentId),
             style: FilledButton.styleFrom(
               backgroundColor: context.themePrimary,
               padding: const EdgeInsets.symmetric(vertical: 14),
