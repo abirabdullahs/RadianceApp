@@ -277,6 +277,19 @@ flutter build appbundle --release
 
 ---
 
+## 🌐 Admin Web Build (Admin + Public Payment)
+
+```bash
+# Admin/public-only web deployment flavor
+flutter build web --release --dart-define=WEB_ADMIN_ONLY=true
+```
+
+**Route behavior in this flavor:**
+- Keep: `/`, `/home`, `/login`, `/admin/*`, `/public/payment`
+- Block: `/student/*`, `/teacher/*` (redirect to login)
+
+---
+
 ## 💰 Monthly Cost
 
 | Service | Cost |

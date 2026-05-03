@@ -274,7 +274,7 @@ pw.Widget _buildTitleRow(_PdfFonts f, String voucherNo, DateTime date) {
       pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.end,
         children: [
-          _metaLine(f, 'Voucher', voucherNo, valueColor: PdfColors.red700),
+          _metaLine(f, 'Invoice No.', voucherNo, valueColor: PdfColors.red700),
           pw.SizedBox(height: 2),
           _metaLine(f, 'Date', _fmtDate(date)),
         ],
@@ -559,7 +559,7 @@ pw.TableRow _memoHeaderRow(_PdfFonts f) {
     children: [
       h('SL', align: pw.Alignment.center),
       h('SERVICE NAME'),
-      h('VOUCHER NO'),
+      h('INVOICE NO.'),
       h('AMOUNT', align: pw.Alignment.centerRight),
       h('DISCOUNT', align: pw.Alignment.centerRight),
       h('SERVICE CHARGE', align: pw.Alignment.centerRight),
@@ -748,7 +748,11 @@ String _latinOnly(String? value, {String fallback = '-'}) {
 
 String _formatServiceLabel(String? serviceName, DateTime forMonth) {
   final raw = _latinOnly(serviceName, fallback: 'Payment').toLowerCase();
-  if (raw == 'monthly' || raw == 'monthly_fee' || raw == 'tuition') {
+  final norm = raw.replaceAll(RegExp(r'[^a-z0-9]'), '');
+  if (norm == 'monthly' ||
+      norm == 'monthlyfee' ||
+      norm == 'monthly_fee' ||
+      norm == 'tuition') {
     final m = _monthTag(forMonth);
     return 'Monthly Fee($m)';
   }
@@ -791,9 +795,14 @@ class PaymentVoucherLineItem {
 }
 
 String _buildPaymentQrPayload(PaymentModel p) {
-  // Temporary behavior: scanning QR shows only voucher number.
   final voucher = p.voucherNo.trim();
-  return voucher.isEmpty ? p.id : voucher;
+  final value = voucher.isEmpty ? p.id : voucher;
+  final uri = Uri.https(
+    'radiance-offline.web.app',
+    '/voucher-verify.html',
+    {'v': value},
+  );
+  return uri.toString();
 }
 
 String _monthTag(DateTime d) {

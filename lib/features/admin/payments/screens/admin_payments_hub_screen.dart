@@ -2,13 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/public_links.dart';
 import '../../../../core/student_id_display.dart';
 import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/course_model.dart';
@@ -25,24 +28,26 @@ class PaymentHubFilters {
   const PaymentHubFilters({this.courseId, this.month});
 
   final String? courseId;
+
   /// First day of calendar month, or `null` = সব মাস।
   final DateTime? month;
 }
 
-final paymentHubFiltersProvider =
-    StateProvider<PaymentHubFilters>((ref) => const PaymentHubFilters());
+final paymentHubFiltersProvider = StateProvider<PaymentHubFilters>(
+  (ref) => const PaymentHubFilters(),
+);
 
 final filteredPaymentsProvider =
     FutureProvider.autoDispose<List<PaymentLedgerModel>>((ref) async {
-  final f = ref.watch(paymentHubFiltersProvider);
-  return ref.read(paymentRepositoryProvider).getPaymentLedger(
-        courseId: f.courseId,
-        month: f.month,
-      );
-});
+      final f = ref.watch(paymentHubFiltersProvider);
+      return ref
+          .read(paymentRepositoryProvider)
+          .getPaymentLedger(courseId: f.courseId, month: f.month);
+    });
 
-final filteredDuesEnrichedProvider =
-    FutureProvider.autoDispose<List<_DueRow>>((ref) async {
+final filteredDuesEnrichedProvider = FutureProvider.autoDispose<List<_DueRow>>((
+  ref,
+) async {
   final f = ref.watch(paymentHubFiltersProvider);
   if (f.courseId == null || f.month == null) return const <_DueRow>[];
 
@@ -52,9 +57,9 @@ final filteredDuesEnrichedProvider =
   final courseRepo = CourseRepository();
 
   // Students enrolled in this course (only active + currently active profile).
-  final students = (await studentRepo.getStudents(courseId: f.courseId))
-      .where((s) => s.isActive)
-      .toList();
+  final students = (await studentRepo.getStudents(
+    courseId: f.courseId,
+  )).where((s) => s.isActive).toList();
   if (students.isEmpty) return const <_DueRow>[];
 
   // Anyone who has at least one monthly-like ledger entry in selected month is "paid".
@@ -147,6 +152,41 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
 
+  String _publicPaymentUrl() {
+    return Uri.base
+        .replace(
+          path: kPublicPaymentPath,
+          queryParameters: null,
+          fragment: null,
+        )
+        .toString();
+  }
+
+  Future<void> _copyPublicPaymentUrl() async {
+    final url = _publicPaymentUrl();
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Public payment URL copied', style: GoogleFonts.nunito()),
+      ),
+    );
+  }
+
+  Future<void> _openPublicPaymentUrl() async {
+    final url = _publicPaymentUrl();
+    final ok = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (ok || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Failed to open URL', style: GoogleFonts.nunito()),
+      ),
+    );
+  }
+
   Future<void> _runGenerateDues() async {
     final picked = await showDatePicker(
       context: context,
@@ -158,18 +198,18 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
     if (picked == null || !mounted) return;
     final month = DateTime(picked.year, picked.month, 1);
     try {
-      final out = await ref.read(paymentDueEdgeServiceProvider).generateMonthlyDues(
-            month: month,
-            force: false,
-          );
+      final out = await ref
+          .read(paymentDueEdgeServiceProvider)
+          .generateMonthlyDues(month: month, force: false);
       if (out == null) {
         throw Exception('No response from due generation function');
       }
       ref.invalidate(filteredDuesEnrichedProvider);
       ref.invalidate(filteredPaymentsProvider);
       if (!mounted) return;
-      final result =
-          out['result'] is Map ? Map<String, dynamic>.from(out['result'] as Map) : const <String, dynamic>{};
+      final result = out['result'] is Map
+          ? Map<String, dynamic>.from(out['result'] as Map)
+          : const <String, dynamic>{};
       final affected = (result['affected'] ?? 0).toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -212,6 +252,16 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
           tooltip: 'Generate Monthly Dues',
           onPressed: _runGenerateDues,
           icon: const Icon(Icons.event_repeat),
+        ),
+        IconButton(
+          tooltip: 'Copy Public Payment URL',
+          onPressed: _copyPublicPaymentUrl,
+          icon: const Icon(Icons.link),
+        ),
+        IconButton(
+          tooltip: 'Open Public Payment URL',
+          onPressed: _openPublicPaymentUrl,
+          icon: const Icon(Icons.open_in_new),
         ),
         IconButton(
           tooltip: 'SMS templates',
@@ -267,7 +317,8 @@ class _PaymentHubFilterBar extends ConsumerWidget {
 
   Future<void> _pickMonth(BuildContext context, WidgetRef ref) async {
     final f = ref.read(paymentHubFiltersProvider);
-    final initial = f.month ?? DateTime(DateTime.now().year, DateTime.now().month, 1);
+    final initial =
+        f.month ?? DateTime(DateTime.now().year, DateTime.now().month, 1);
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -321,7 +372,9 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                       labelText: 'কোর্স',
                       isDense: true,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.cardRadius,
+                        ),
                       ),
                     ),
                     selectedItemBuilder: (ctx) {
@@ -345,7 +398,10 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                     items: [
                       DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('সব কোর্স', style: GoogleFonts.hindSiliguri()),
+                        child: Text(
+                          'সব কোর্স',
+                          style: GoogleFonts.hindSiliguri(),
+                        ),
                       ),
                       ...items.map(
                         (e) => DropdownMenuItem<String?>(
@@ -395,22 +451,17 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          flex: 3,
-                          child: courseDropdown(),
-                        ),
+                        Expanded(flex: 3, child: courseDropdown()),
                         const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: monthBtn(),
-                        ),
+                        Expanded(flex: 2, child: monthBtn()),
                       ],
                     );
                   },
                 );
               },
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('$e', style: GoogleFonts.hindSiliguri(fontSize: 12)),
+              error: (e, _) =>
+                  Text('$e', style: GoogleFonts.hindSiliguri(fontSize: 12)),
             ),
             const SizedBox(height: 6),
             Wrap(
@@ -419,7 +470,10 @@ class _PaymentHubFilterBar extends ConsumerWidget {
               children: [
                 if (f.month != null)
                   ActionChip(
-                    label: Text('মাস সরান', style: GoogleFonts.hindSiliguri(fontSize: 12)),
+                    label: Text(
+                      'মাস সরান',
+                      style: GoogleFonts.hindSiliguri(fontSize: 12),
+                    ),
                     onPressed: () {
                       ref.read(paymentHubFiltersProvider.notifier).state =
                           PaymentHubFilters(courseId: f.courseId, month: null);
@@ -430,7 +484,10 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                     ref.read(paymentHubFiltersProvider.notifier).state =
                         const PaymentHubFilters();
                   },
-                  child: Text('ফিল্টার রিসেট', style: GoogleFonts.hindSiliguri()),
+                  child: Text(
+                    'ফিল্টার রিসেট',
+                    style: GoogleFonts.hindSiliguri(),
+                  ),
                 ),
               ],
             ),
@@ -463,9 +520,12 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
 
   Future<void> _printPayment(PaymentLedgerModel p) async {
     try {
-      final student =
-          await ref.read(studentRepositoryForPaymentsProvider).getStudentById(p.studentId);
-      final course = await ref.read(courseRepositoryProvider).getCourseById(p.courseId);
+      final student = await ref
+          .read(studentRepositoryForPaymentsProvider)
+          .getStudentById(p.studentId);
+      final course = await ref
+          .read(courseRepositoryProvider)
+          .getCourseById(p.courseId);
       final pm = PaymentModel(
         id: p.id,
         voucherNo: p.voucherNo,
@@ -483,7 +543,9 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
         paidAt: p.paidAt,
         createdBy: p.createdBy,
       );
-      final pdfBytes = await ref.read(pdfServiceProvider).generateVoucherPdf(
+      final pdfBytes = await ref
+          .read(pdfServiceProvider)
+          .generateVoucherPdf(
             pm,
             student,
             course,
@@ -528,8 +590,9 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
       return;
     }
     try {
-      final map =
-          await ref.read(studentRepositoryForPaymentsProvider).getDisplayStudentIdsForUserIds(ids);
+      final map = await ref
+          .read(studentRepositoryForPaymentsProvider)
+          .getDisplayStudentIdsForUserIds(ids);
       if (!mounted) return;
       setState(() {
         _displayStudentIds
@@ -539,8 +602,9 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
     } catch (_) {}
 
     try {
-      final names =
-          await ref.read(studentRepositoryForPaymentsProvider).getStudentNamesForUserIds(ids);
+      final names = await ref
+          .read(studentRepositoryForPaymentsProvider)
+          .getStudentNamesForUserIds(ids);
       if (!mounted) return;
       setState(() {
         _studentNames
@@ -590,20 +654,29 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                 style: GoogleFonts.hindSiliguri(),
               ),
               const SizedBox(height: 6),
-              Text('ফি ধরন: ${p.paymentTypeCode}', style: GoogleFonts.hindSiliguri()),
+              Text(
+                'ফি ধরন: ${p.paymentTypeCode}',
+                style: GoogleFonts.hindSiliguri(),
+              ),
               const SizedBox(height: 6),
               Text(
                 'বিলিং মাস: ${p.forMonth == null ? '—' : DateFormat.yMMMM().format(p.forMonth!)}',
                 style: GoogleFonts.hindSiliguri(),
               ),
               const SizedBox(height: 6),
-              Text('পরিশোধিত: ${fmt.format(p.amountPaid)}', style: GoogleFonts.nunito()),
+              Text(
+                'পরিশোধিত: ${fmt.format(p.amountPaid)}',
+                style: GoogleFonts.nunito(),
+              ),
               Text(
                 'নির্ধারিত / ছাড়: ${fmt.format(p.amountDue)} / ${fmt.format(p.discountAmount)}',
                 style: GoogleFonts.nunito(fontSize: 12),
               ),
               const SizedBox(height: 6),
-              Text('স্ট্যাটাস: ${p.status.name}', style: GoogleFonts.hindSiliguri()),
+              Text(
+                'স্ট্যাটাস: ${p.status.name}',
+                style: GoogleFonts.hindSiliguri(),
+              ),
               if (p.note != null && p.note!.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text('নোট: ${p.note}', style: GoogleFonts.hindSiliguri()),
@@ -631,9 +704,9 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
   Future<void> _printSelectedPayments(List<PaymentLedgerModel> rows) async {
     if (rows.isEmpty) return;
     try {
-      final pdfBytes = await ref.read(paymentVoucherPdfServiceProvider).buildBulkVoucherPdf(
-            rows,
-          );
+      final pdfBytes = await ref
+          .read(paymentVoucherPdfServiceProvider)
+          .buildBulkVoucherPdf(rows);
       if (!mounted) return;
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
@@ -677,7 +750,12 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
       ref.invalidate(filteredPaymentsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('মুছে ফেলা হয়েছে', style: GoogleFonts.hindSiliguri())),
+          SnackBar(
+            content: Text(
+              'মুছে ফেলা হয়েছে',
+              style: GoogleFonts.hindSiliguri(),
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -699,12 +777,14 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           unawaited(_loadDisplayStudentIds(list));
         });
-        final filtered =
-            q.isEmpty ? list : list.where((p) => _paymentMatchesQuery(p, q)).toList();
+        final filtered = q.isEmpty
+            ? list
+            : list.where((p) => _paymentMatchesQuery(p, q)).toList();
         final validIds = filtered.map((e) => e.id).toSet();
         _selectedPaymentIds.removeWhere((id) => !validIds.contains(id));
-        final selectedRows =
-            filtered.where((p) => _selectedPaymentIds.contains(p.id)).toList();
+        final selectedRows = filtered
+            .where((p) => _selectedPaymentIds.contains(p.id))
+            .toList();
         final voucherCounts = <String, int>{};
         for (final p in filtered) {
           final key = p.voucherNo.trim();
@@ -729,7 +809,9 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                       hintText: 'ভাউচার নম্বর অথবা শেষ ৯ ডিজিট',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.cardRadius,
+                        ),
                       ),
                     ),
                     style: GoogleFonts.nunito(),
@@ -755,7 +837,10 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                             ? null
                             : () => _printSelectedPayments(selectedRows),
                         icon: const Icon(Icons.picture_as_pdf_outlined),
-                        label: Text('Print Selected', style: GoogleFonts.nunito()),
+                        label: Text(
+                          'Print Selected',
+                          style: GoogleFonts.nunito(),
+                        ),
                       ),
                     ],
                   ),
@@ -806,10 +891,14 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                               final voucherRaw = p.voucherNo.isEmpty
                                   ? '(loading)'
                                   : p.voucherNo;
-                              final itemCount = voucherCounts[p.voucherNo.trim()] ?? 1;
-                              final sid = _displayStudentIds[p.studentId] ?? p.studentId;
-                              final date = DateFormat.yMMMd()
-                                  .format(p.paidAt ?? DateTime.now());
+                              final itemCount =
+                                  voucherCounts[p.voucherNo.trim()] ?? 1;
+                              final sid =
+                                  _displayStudentIds[p.studentId] ??
+                                  p.studentId;
+                              final date = DateFormat.yMMMd().format(
+                                p.paidAt ?? DateTime.now(),
+                              );
                               return DataRow(
                                 selected: _selectedPaymentIds.contains(p.id),
                                 onSelectChanged: (checked) {
@@ -822,10 +911,27 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                                   });
                                 },
                                 cells: [
-                                  DataCell(Text(name, style: GoogleFonts.hindSiliguri())),
-                                  DataCell(Text(month, style: GoogleFonts.nunito())),
-                                  DataCell(Text(fmt.format(p.amountPaid), style: GoogleFonts.nunito())),
-                                  DataCell(Text(voucherRaw, style: GoogleFonts.nunito())),
+                                  DataCell(
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.hindSiliguri(),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(month, style: GoogleFonts.nunito()),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      fmt.format(p.amountPaid),
+                                      style: GoogleFonts.nunito(),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(
+                                      voucherRaw,
+                                      style: GoogleFonts.nunito(),
+                                    ),
+                                  ),
                                   DataCell(
                                     itemCount > 1
                                         ? Row(
@@ -835,66 +941,100 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
                                                 child: Text(
                                                   voucherRaw,
                                                   style: GoogleFonts.nunito(),
-                                                  overflow: TextOverflow.ellipsis,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
                                               const SizedBox(width: 6),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 6,
-                                                  vertical: 2,
-                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: Theme.of(context)
                                                       .colorScheme
                                                       .primary
                                                       .withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(999),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
                                                 ),
                                                 child: Text(
                                                   '$itemCount items',
                                                   style: GoogleFonts.nunito(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.w700,
-                                                    color: Theme.of(context).colorScheme.primary,
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).colorScheme.primary,
                                                   ),
                                                 ),
                                               ),
                                             ],
                                           )
-                                        : Text('Single', style: GoogleFonts.nunito()),
+                                        : Text(
+                                            'Single',
+                                            style: GoogleFonts.nunito(),
+                                          ),
                                   ),
-                                  DataCell(SelectableText(sid, style: GoogleFonts.nunito(fontSize: 12))),
-                                  DataCell(Text(date, style: GoogleFonts.nunito())),
+                                  DataCell(
+                                    SelectableText(
+                                      sid,
+                                      style: GoogleFonts.nunito(fontSize: 12),
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Text(date, style: GoogleFonts.nunito()),
+                                  ),
                                   DataCell(
                                     Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(
                                           tooltip: 'Detail',
-                                          onPressed: () => _showPaymentDetail(p),
-                                          icon: const Icon(Icons.visibility_outlined, size: 18),
+                                          onPressed: () =>
+                                              _showPaymentDetail(p),
+                                          icon: const Icon(
+                                            Icons.visibility_outlined,
+                                            size: 18,
+                                          ),
                                         ),
                                         IconButton(
                                           tooltip: 'Edit',
                                           onPressed: () async {
                                             if (!context.mounted) return;
-                                            await context.push('/admin/payments/edit/${p.id}');
+                                            await context.push(
+                                              '/admin/payments/edit/${p.id}',
+                                            );
                                             if (context.mounted) {
-                                              ref.invalidate(filteredPaymentsProvider);
+                                              ref.invalidate(
+                                                filteredPaymentsProvider,
+                                              );
                                             }
                                           },
-                                          icon: const Icon(Icons.edit_outlined, size: 18),
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18,
+                                          ),
                                         ),
                                         IconButton(
                                           tooltip: 'Print',
                                           onPressed: () => _printPayment(p),
-                                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                                          icon: const Icon(
+                                            Icons.picture_as_pdf_outlined,
+                                            size: 18,
+                                          ),
                                         ),
                                         IconButton(
                                           tooltip: 'Delete',
                                           onPressed: () => _confirmDelete(p),
-                                          icon: const Icon(Icons.delete_outline, size: 18),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 18,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -937,7 +1077,10 @@ class _DuesTab extends ConsumerWidget {
         }
         if (rows.isEmpty) {
           return Center(
-            child: Text('এই কোর্স/মাসে সবাই Monthly payment করেছে', style: GoogleFonts.hindSiliguri()),
+            child: Text(
+              'এই কোর্স/মাসে সবাই Monthly payment করেছে',
+              style: GoogleFonts.hindSiliguri(),
+            ),
           );
         }
         return RefreshIndicator(
@@ -965,7 +1108,10 @@ class _DuesTab extends ConsumerWidget {
                 return ListTile(
                   leading: CircleAvatar(
                     radius: 14,
-                    child: Text('${i + 1}', style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '${i + 1}',
+                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+                    ),
                   ),
                   title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
                   subtitle: Text(
@@ -981,8 +1127,14 @@ class _DuesTab extends ConsumerWidget {
                       ),
                       const SizedBox(width: 4),
                       OutlinedButton(
-                        onPressed: () => context.push('/admin/payments/add', extra: r.studentId),
-                        child: Text('Clear Payment', style: GoogleFonts.nunito(fontSize: 12)),
+                        onPressed: () => context.push(
+                          '/admin/payments/add',
+                          extra: r.studentId,
+                        ),
+                        child: Text(
+                          'Clear Payment',
+                          style: GoogleFonts.nunito(fontSize: 12),
+                        ),
                       ),
                     ],
                   ),

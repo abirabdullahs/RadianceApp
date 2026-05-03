@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Radiance — Voucher Verify</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #080c14;
+        --surface: rgba(255,255,255,0.04);
+        --surface-hover: rgba(255,255,255,0.07);
+        --border: rgba(255,255,255,0.08);
+        --border-bright: rgba(255,255,255,0.15);
+        --ink: #e8eaf0;
+        --muted: rgba(232,234,240,0.45);
+        --accent: #3b82f6;
+        --accent-glow: rgba(59,130,246,0.25);
+        --accent2: #06b6d4;
+        --ok: #22d3a0;
+        --ok-glow: rgba(34,211,160,0.2);
+        --danger: #f87171;
+        --danger-glow: rgba(248,113,113,0.2);
+        --font-display: 'Syne', sans-serif;
+        --font-mono: 'DM Mono', monospace;
+        --font-poppins: 'Poppins', sans-serif;
+      }
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: var(--font-display);
+        background: var(--bg);
+        color: var(--ink);
+        min-height: 100vh;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ── Animated background ── */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 80% 60% at 20% 10%, rgba(59,130,246,0.12) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 50% at 80% 90%, rgba(6,182,212,0.08) 0%, transparent 55%),
+          radial-gradient(ellipse 50% 40% at 50% 50%, rgba(139,92,246,0.05) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* Subtle grid overlay */
+      body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+        background-size: 48px 48px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 36px 20px 60px;
+      }
+
+      /* ── Header ── */
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 32px;
+        animation: fadeSlideDown 0.5s ease both;
+      }
+
+      .logo-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--accent), var(--accent2));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 0 24px var(--accent-glow);
+      }
+
+      .logo-mark svg { width: 22px; height: 22px; }
+
+      .header-text h1 {
+        font-family: var(--font-poppins);
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        line-height: 1;
+        color: var(--ink);
+      }
+
+      .header-text span {
+        font-size: 12px;
+        color: var(--muted);
+        font-family: var(--font-mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      /* ── Status pill ── */
+      .status-bar {
+        margin-bottom: 24px;
+        animation: fadeSlideDown 0.5s 0.1s ease both;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 18px;
+        border-radius: 100px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        transition: all 0.3s ease;
+      }
+
+      .status-pill.ok {
+        background: var(--ok-glow);
+        border-color: rgba(34,211,160,0.35);
+        color: var(--ok);
+      }
+
+      .status-pill.err {
+        background: var(--danger-glow);
+        border-color: rgba(248,113,113,0.35);
+        color: var(--danger);
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        flex-shrink: 0;
+      }
+
+      .status-pill.ok .status-dot { animation: pulse-ok 1.8s ease infinite; }
+      .status-pill.err .status-dot { animation: pulse-err 1.8s ease infinite; }
+      .status-pill:not(.ok):not(.err) .status-dot { animation: pulse-idle 1.4s ease infinite; }
+
+      @keyframes pulse-ok {
+        0%,100% { box-shadow: 0 0 0 0 rgba(34,211,160,0.5); }
+        50% { box-shadow: 0 0 0 5px rgba(34,211,160,0); }
+      }
+      @keyframes pulse-err {
+        0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.5); }
+        50% { box-shadow: 0 0 0 5px rgba(248,113,113,0); }
+      }
+      @keyframes pulse-idle {
+        0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+      }
+
+      /* ── Glass card ── */
+      .glass-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        overflow: hidden;
+        animation: fadeSlideUp 0.5s 0.2s ease both;
+      }
+
+      .card-header {
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card-header-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: rgba(59,130,246,0.15);
+        border: 1px solid rgba(59,130,246,0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .card-header-icon svg { width: 15px; height: 15px; color: var(--accent); }
+
+      .card-header-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-family: var(--font-mono);
+      }
+
+      .card-voucher {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--accent);
+        background: rgba(59,130,246,0.1);
+        border: 1px solid rgba(59,130,246,0.2);
+        padding: 4px 12px;
+        border-radius: 6px;
+      }
+
+      /* ── Meta grid ── */
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        padding: 4px;
+      }
+
+      .meta-item {
+        padding: 18px 20px;
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        transition: background 0.2s;
+      }
+
+      .meta-item:hover { background: var(--surface-hover); }
+
+      .meta-item:nth-child(3n) { border-right-color: transparent; }
+
+      .meta-k {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      .meta-v {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        line-height: 1.3;
+      }
+
+      .meta-v.mono {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 400;
+      }
+
+      .meta-v.big {
+        font-family: var(--font-poppins);
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--ok);
+      }
+
+      /* ── Note ── */
+      .note-bar {
+        margin: 0 24px 0;
+        padding: 10px 14px;
+        background: rgba(59,130,246,0.06);
+        border: 1px solid rgba(59,130,246,0.15);
+        border-radius: 10px;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-bottom: 0;
+      }
+
+      /* ── Table section ── */
+      .table-wrap {
+        padding: 20px 24px 24px;
+        border-top: 1px solid var(--border);
+        margin-top: 4px;
+      }
+
+      .table-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+
+      .table-scroll { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+        min-width: 700px;
+      }
+
+      thead tr {
+        background: rgba(255,255,255,0.03);
+      }
+
+      th {
+        padding: 10px 14px;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+
+      td {
+        padding: 11px 14px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--ink);
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        transition: background 0.15s;
+      }
+
+      tbody tr:last-child td { border-bottom: none; }
+
+      tbody tr:hover td { background: var(--surface-hover); }
+
+      th.num, td.num { text-align: right; }
+
+      td.num { color: rgba(232,234,240,0.75); }
+      td.num:last-child {
+        color: var(--ok);
+        font-weight: 500;
+      }
+
+      /* ── Divider ── */
+      .section-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border-bright), transparent);
+        margin: 0 24px;
+      }
+
+      /* ── Animations ── */
+      @keyframes fadeSlideDown {
+        from { opacity: 0; transform: translateY(-12px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes fadeSlideUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ── Loading shimmer ── */
+      .shimmer {
+        background: linear-gradient(90deg, var(--surface) 25%, rgba(255,255,255,0.07) 50%, var(--surface) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.4s infinite;
+        border-radius: 6px;
+        height: 14px;
+      }
+
+      @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 600px) {
+        .wrap { padding: 20px 12px 48px; }
+
+        .header { margin-bottom: 20px; gap: 10px; }
+        .logo-mark { width: 36px; height: 36px; border-radius: 10px; }
+        .logo-mark svg { width: 18px; height: 18px; }
+        .header-text h1 { font-size: 17px; }
+        .header-text span { font-size: 10px; }
+
+        .status-pill { font-size: 12px; padding: 8px 14px; }
+
+        .card-header {
+          flex-wrap: wrap;
+          gap: 8px;
+          padding: 14px 16px 12px;
+        }
+        .card-voucher { margin-left: 0; font-size: 11px; }
+
+        .meta-grid { grid-template-columns: repeat(2, 1fr); }
+        .meta-item {
+          padding: 14px 16px;
+          border-right: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+        }
+        /* reset the nth-child desktop rule, apply 2-col rule */
+        .meta-item:nth-child(3n) { border-right-color: var(--border); }
+        .meta-item:nth-child(2n) { border-right-color: transparent; }
+
+        .meta-k { font-size: 9px; }
+        .meta-v { font-size: 13px; }
+        .meta-v.big { font-size: 17px; }
+        .meta-v.mono { font-size: 11.5px; }
+
+        .table-wrap { padding: 14px 12px 16px; }
+        .note-bar { font-size: 11px; }
+
+        th { font-size: 9px; padding: 8px 10px; }
+        td { font-size: 11px; padding: 9px 10px; }
+      }
+
+      @media (max-width: 380px) {
+        .meta-grid { grid-template-columns: 1fr; }
+        .meta-item:nth-child(2n) { border-right-color: transparent; }
+        .meta-item { border-right-color: transparent !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V7L12 2z" fill="white" fill-opacity="0.9"/>
+          </svg>
+        </div>
+        <div class="header-text">
+          <h1>Radiance</h1>
+          <span>Payment Verification System</span>
+        </div>
+      </div>
+
+      <!-- Status -->
+      <div class="status-bar">
+        <div class="status-pill" id="statusPill">
+          <div class="status-dot"></div>
+          <span id="statusText">Initializing…</span>
+        </div>
+      </div>
+
+      <!-- Result card -->
+      <div class="glass-card" id="resultCard" style="display:none">
+
+        <div class="card-header">
+          <div class="card-header-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="3"/>
+              <path d="M2 10h20"/>
+            </svg>
+          </div>
+          <span class="card-header-title">Payment Record</span>
+          <div class="card-voucher" id="mVoucher">—</div>
+        </div>
+
+        <!-- Meta grid -->
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-k">Student</div>
+            <div class="meta-v" id="mStudent">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Student ID</div>
+            <div class="meta-v mono" id="mStudentId">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Course</div>
+            <div class="meta-v" id="mCourse">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Batch</div>
+            <div class="meta-v mono" id="mBatch">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Paid Date</div>
+            <div class="meta-v mono" id="mPaidDate">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Payment Method</div>
+            <div class="meta-v mono" id="mMethod">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Transaction Ref</div>
+            <div class="meta-v mono" id="mTxnRef">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Items</div>
+            <div class="meta-v mono" id="mItems">—</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Total Paid</div>
+            <div class="meta-v big" id="mTotal">0.00</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Total Due</div>
+            <div class="meta-v mono" id="mDue">0.00</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Discount</div>
+            <div class="meta-v mono" id="mDiscount">0.00</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-k">Fine</div>
+            <div class="meta-v mono" id="mFine">0.00</div>
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div id="mNoteWrap" style="padding: 0 24px 16px; display:none">
+          <div class="note-bar" id="mNote"></div>
+        </div>
+
+        <div class="section-divider"></div>
+
+        <!-- Table -->
+        <div class="table-wrap">
+          <div class="table-label">Line Items</div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fee Type</th>
+                  <th>Month</th>
+                  <th>Paid Date</th>
+                  <th>Method</th>
+                  <th class="num">Paid</th>
+                  <th class="num">Due</th>
+                  <th class="num">Discount</th>
+                  <th class="num">Fine</th>
+                  <th class="num">Net</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      const SUPABASE_URL = "https://awvmevatqceayldichsh.supabase.co";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3dm1ldmF0cWNlYXlsZGljaHNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NjEzODIsImV4cCI6MjA5MTIzNzM4Mn0.D3sXd_4-3dqehc_4o4wUHWOJdUAqwQxNIP7Ry3hEnVs";
+
+      const resultCard = document.getElementById("resultCard");
+      const rowsEl = document.getElementById("rows");
+      const statusPill = document.getElementById("statusPill");
+      const statusText = document.getElementById("statusText");
+
+      const fmtMoney = (n) => Number(n || 0).toFixed(2);
+      const fmtMonth = (iso) => {
+        if (!iso) return "-";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "-";
+        return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+      };
+      const fmtDateTime = (iso) => {
+        if (!iso) return "-";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "-";
+        return d.toLocaleString();
+      };
+
+      function setStatus(text, kind) {
+        statusText.textContent = text || "";
+        statusPill.className = "status-pill" + (kind === "ok" ? " ok" : kind === "err" ? " err" : "");
+      }
+
+      async function verifyVoucher(voucher) {
+        voucher = (voucher || "").trim();
+        if (!voucher) {
+          setStatus("Invalid verify link", "err");
+          resultCard.style.display = "none";
+          return;
+        }
+        setStatus("Checking voucher…", "");
+        resultCard.style.display = "none";
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/public_get_voucher_by_no`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({ p_voucher_no: voucher })
+          });
+          const data = await res.json();
+          if (!res.ok || !data || data.success !== true) {
+            setStatus("Voucher not found", "err");
+            return;
+          }
+          const items = Array.isArray(data.items) ? data.items : [];
+          if (!items.length) {
+            setStatus("Voucher not found", "err");
+            return;
+          }
+          const first = items[0];
+          const totalPaid = items.reduce((p, x) => p + Number(x.amount_paid || 0), 0);
+          const totalDue = items.reduce((p, x) => p + Number(x.amount_due || 0), 0);
+          const totalDiscount = items.reduce((p, x) => p + Number(x.discount_amount || 0), 0);
+          const totalFine = items.reduce((p, x) => p + Number(x.fine_amount || 0), 0);
+
+          document.getElementById("mVoucher").textContent = first.voucher_no || "-";
+          document.getElementById("mStudent").textContent = first.student_name || "-";
+          document.getElementById("mStudentId").textContent = first.student_code || "-";
+          document.getElementById("mCourse").textContent = first.course_name || "-";
+          document.getElementById("mBatch").textContent = first.batch_name || "-";
+          document.getElementById("mPaidDate").textContent = fmtDateTime(first.paid_at);
+          document.getElementById("mMethod").textContent = (first.payment_method || "-").toUpperCase();
+          document.getElementById("mTxnRef").textContent = first.transaction_ref || "-";
+          document.getElementById("mTotal").textContent = fmtMoney(totalPaid);
+          document.getElementById("mDue").textContent = fmtMoney(totalDue);
+          document.getElementById("mDiscount").textContent = fmtMoney(totalDiscount);
+          document.getElementById("mFine").textContent = fmtMoney(totalFine);
+          document.getElementById("mItems").textContent = String(items.length);
+
+          const note = [first.note, first.description].filter(Boolean).join(" | ");
+          const noteWrap = document.getElementById("mNoteWrap");
+          if (note) {
+            document.getElementById("mNote").textContent = `Note: ${note}`;
+            noteWrap.style.display = "block";
+          } else {
+            noteWrap.style.display = "none";
+          }
+
+          rowsEl.innerHTML = items.map((x) => `
+            <tr>
+              <td>${x.payment_type_code || "-"}</td>
+              <td>${x.month_label || fmtMonth(x.for_month)}</td>
+              <td>${fmtDateTime(x.paid_at)}</td>
+              <td>${(x.payment_method || "-").toUpperCase()}</td>
+              <td class="num">${fmtMoney(x.amount_paid)}</td>
+              <td class="num">${fmtMoney(x.amount_due)}</td>
+              <td class="num">${fmtMoney(x.discount_amount)}</td>
+              <td class="num">${fmtMoney(x.fine_amount)}</td>
+              <td class="num">${fmtMoney(x.net_amount)}</td>
+            </tr>
+          `).join("");
+
+          resultCard.style.display = "block";
+          setStatus("Verified — Payment Authentic", "ok");
+        } catch (e) {
+          setStatus(`Failed: ${e}`, "err");
+        }
+      }
+
+      const q = new URLSearchParams(window.location.search);
+      const v = (q.get("v") || "").trim();
+      if (v) {
+        verifyVoucher(v);
+      } else {
+        setStatus("Invalid verify link", "err");
+      }
+    </script>
+  </body>
+</html>

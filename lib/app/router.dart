@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/app_build_config.dart';
 import '../core/auth/profile_role_notifier.dart';
 import '../core/constants.dart';
+import '../core/public_links.dart';
 import '../core/supabase_client.dart';
 import '../features/admin/courses/screens/admin_course_detail_screen.dart';
 import '../features/admin/courses/screens/admin_courses_screen.dart';
@@ -31,6 +33,8 @@ import '../features/admin/students/screens/admin_material_segment_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/splash_screen.dart';
 import '../features/home/screens/public_home_screen.dart';
+import '../features/home/screens/public_payment_screen.dart';
+import '../features/home/screens/public_voucher_verify_screen.dart';
 import '../features/admin/cms/admin_home_cms_screen.dart';
 import '../features/admin/community/screens/admin_course_chats_screen.dart';
 import '../features/question_bank/admin/screens/admin_qbank_chapter_questions_screen.dart';
@@ -69,11 +73,21 @@ final class _AuthRefreshNotifier extends ChangeNotifier {
 final _authRefreshNotifier = _AuthRefreshNotifier();
 
 /// Refreshes [GoRouter] on auth events and when [profileRoleNotifier] loads [users.role].
-final Listenable _routerRefresh =
-    Listenable.merge([_authRefreshNotifier, profileRoleNotifier]);
+final Listenable _routerRefresh = Listenable.merge([
+  _authRefreshNotifier,
+  profileRoleNotifier,
+]);
 
 String _withQuery(String path, String query) =>
     query.isEmpty ? path : '$path?$query';
+
+const _webAdminPublicAllowedPaths = <String>{
+  '/',
+  '/home',
+  '/login',
+  kPublicPaymentPath,
+  kPublicVoucherPath,
+};
 
 /// App navigation: splash, public home, auth, role-based admin vs student stacks.
 ///
@@ -84,10 +98,7 @@ final GoRouter appRouter = GoRouter(
   redirect: _redirect,
   errorBuilder: (context, state) => _RouteErrorScreen(state: state),
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const SplashScreen(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
     // Typo: `/students/...` — app uses singular `/student/...`
     GoRoute(
       path: '/students/doubts',
@@ -111,9 +122,16 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PublicHomeScreen(),
     ),
     GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
+      path: kPublicPaymentPath,
+      builder: (context, state) => const PublicPaymentScreen(),
     ),
+    GoRoute(
+      path: kPublicVoucherPath,
+      builder: (context, state) => PublicVoucherVerifyScreen(
+        initialVoucher: state.uri.queryParameters['v'],
+      ),
+    ),
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
 
     // --- Admin ---
     GoRoute(
@@ -122,7 +140,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/admin/notifications',
-      builder: (context, state) => const NotificationsScreen(useAdminShell: true),
+      builder: (context, state) =>
+          const NotificationsScreen(useAdminShell: true),
     ),
     GoRoute(
       path: '/admin/courses',
@@ -205,7 +224,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final courseId = state.pathParameters['courseId']!;
         final sessionId = state.uri.queryParameters['sessionId'];
-        return AttendanceReportsScreen(courseId: courseId, sessionId: sessionId);
+        return AttendanceReportsScreen(
+          courseId: courseId,
+          sessionId: sessionId,
+        );
       },
     ),
     GoRoute(
@@ -268,7 +290,10 @@ final GoRouter appRouter = GoRouter(
       path: '/admin/qbank/chapter/:chapterId/add-mcq',
       builder: (context, state) {
         final chapterId = state.pathParameters['chapterId']!;
-        return AdminQbankQuestionEditorScreen(type: 'mcq', chapterId: chapterId);
+        return AdminQbankQuestionEditorScreen(
+          type: 'mcq',
+          chapterId: chapterId,
+        );
       },
     ),
     GoRoute(
@@ -326,7 +351,11 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final id = state.pathParameters['groupId']!;
         final name = state.uri.queryParameters['name'] ?? 'গ্রুপ';
-        return CommunityChatScreen(groupId: id, groupName: name, useAdminShell: true);
+        return CommunityChatScreen(
+          groupId: id,
+          groupName: name,
+          useAdminShell: true,
+        );
       },
     ),
     GoRoute(
@@ -341,140 +370,146 @@ final GoRouter appRouter = GoRouter(
       },
     ),
 
-    // --- Teacher (doubt inbox + chat) ---
-    GoRoute(
-      path: '/teacher',
-      builder: (context, state) => const StaffDoubtInboxScreen(isAdmin: false),
-    ),
-    GoRoute(
-      path: '/teacher/doubts/:id',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return DoubtChatScreen(doubtId: id, shell: DoubtChatShell.teacher);
-      },
-    ),
-
-    // --- Student ---
-    ShellRoute(
-      builder: (context, state, child) => StudentBottomShell(
-        location: state.uri.path,
-        child: child,
+    if (!isWebAdminOnlyMode) ...[
+      // --- Teacher (doubt inbox + chat) ---
+      GoRoute(
+        path: '/teacher',
+        builder: (context, state) =>
+            const StaffDoubtInboxScreen(isAdmin: false),
       ),
-      routes: [
-        GoRoute(
-          path: '/student',
-          builder: (context, state) => const StudentDashboardScreen(),
-        ),
-        GoRoute(
-          path: '/student/notifications',
-          builder: (context, state) => const NotificationsScreen(),
-        ),
-        // Doubt solve: literal `/student/doubts/new` must be before `/student/doubts/:id`.
-        GoRoute(
-          path: '/student/doubts',
-          builder: (context, state) => const StudentDoubtsListScreen(),
-        ),
-        GoRoute(
-          path: '/student/doubts/new',
-          builder: (context, state) => const StudentNewDoubtScreen(),
-        ),
-        GoRoute(
-          path: '/student/doubts/:id',
-          builder: (context, state) {
-            final id = state.pathParameters['id']!;
-            return DoubtChatScreen(doubtId: id, shell: DoubtChatShell.student);
-          },
-        ),
-        GoRoute(
-          path: '/student/courses',
-          builder: (context, state) => const StudentCoursesScreen(),
-        ),
-        GoRoute(
-          path: '/student/courses/:id',
-          builder: (context, state) {
-            final id = state.pathParameters['id']!;
-            return CourseDetailScreen(courseId: id);
-          },
-        ),
-        GoRoute(
-          path: '/student/notes/downloads',
-          builder: (context, state) => const DownloadedNotesScreen(),
-        ),
-        GoRoute(
-          path: '/student/notes/:chapterId',
-          builder: (context, state) {
-            final chapterId = state.pathParameters['chapterId']!;
-            return NotesScreen(chapterId: chapterId);
-          },
-        ),
-        GoRoute(
-          path: '/student/exams',
-          builder: (context, state) => const StudentExamsScreen(),
-        ),
-        GoRoute(
-          path: '/student/exams/:id/take',
-          builder: (context, state) {
-            final id = state.pathParameters['id']!;
-            return ExamTakingScreen(examId: id);
-          },
-        ),
-        GoRoute(
-          path: '/student/results',
-          builder: (context, state) => const StudentResultsScreen(),
-        ),
-        GoRoute(
-          path: '/student/payments',
-          builder: (context, state) => const StudentPaymentsScreen(),
-        ),
-        GoRoute(
-          path: '/student/attendance',
-          builder: (context, state) => const StudentAttendanceScreen(),
-        ),
-        GoRoute(
-          path: '/student/community/:groupId',
-          builder: (context, state) {
-            final groupId = state.pathParameters['groupId']!;
-            final name = state.uri.queryParameters['name'] ?? 'গ্রুপ';
-            return CommunityChatScreen(groupId: groupId, groupName: name);
-          },
-        ),
-        GoRoute(
-          path: '/student/community',
-          builder: (context, state) => const CommunityScreen(),
-        ),
-        GoRoute(
-          path: '/student/qbank',
-          builder: (context, state) => const QBankScreen(),
-        ),
-        GoRoute(
-          path: '/student/qbank/practice/:chapterId',
-          builder: (context, state) {
-            final chapterId = state.pathParameters['chapterId']!;
-            final chapter = state.uri.queryParameters['chapter'];
-            return QBankPracticeScreen(chapterId: chapterId, chapterName: chapter);
-          },
-        ),
-        GoRoute(
-          path: '/student/profile/edit',
-          builder: (context, state) => const StudentEditProfileScreen(),
-        ),
-        GoRoute(
-          path: '/student/settings',
-          builder: (context, state) => const StudentSettingsScreen(),
-        ),
-        GoRoute(
-          path: '/student/menu',
-          builder: (context, state) => const StudentMenuScreen(),
-        ),
-      ],
-    ),
+      GoRoute(
+        path: '/teacher/doubts/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return DoubtChatScreen(doubtId: id, shell: DoubtChatShell.teacher);
+        },
+      ),
+
+      // --- Student ---
+      ShellRoute(
+        builder: (context, state, child) =>
+            StudentBottomShell(location: state.uri.path, child: child),
+        routes: [
+          GoRoute(
+            path: '/student',
+            builder: (context, state) => const StudentDashboardScreen(),
+          ),
+          GoRoute(
+            path: '/student/notifications',
+            builder: (context, state) => const NotificationsScreen(),
+          ),
+          // Doubt solve: literal `/student/doubts/new` must be before `/student/doubts/:id`.
+          GoRoute(
+            path: '/student/doubts',
+            builder: (context, state) => const StudentDoubtsListScreen(),
+          ),
+          GoRoute(
+            path: '/student/doubts/new',
+            builder: (context, state) => const StudentNewDoubtScreen(),
+          ),
+          GoRoute(
+            path: '/student/doubts/:id',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return DoubtChatScreen(
+                doubtId: id,
+                shell: DoubtChatShell.student,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/student/courses',
+            builder: (context, state) => const StudentCoursesScreen(),
+          ),
+          GoRoute(
+            path: '/student/courses/:id',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return CourseDetailScreen(courseId: id);
+            },
+          ),
+          GoRoute(
+            path: '/student/notes/downloads',
+            builder: (context, state) => const DownloadedNotesScreen(),
+          ),
+          GoRoute(
+            path: '/student/notes/:chapterId',
+            builder: (context, state) {
+              final chapterId = state.pathParameters['chapterId']!;
+              return NotesScreen(chapterId: chapterId);
+            },
+          ),
+          GoRoute(
+            path: '/student/exams',
+            builder: (context, state) => const StudentExamsScreen(),
+          ),
+          GoRoute(
+            path: '/student/exams/:id/take',
+            builder: (context, state) {
+              final id = state.pathParameters['id']!;
+              return ExamTakingScreen(examId: id);
+            },
+          ),
+          GoRoute(
+            path: '/student/results',
+            builder: (context, state) => const StudentResultsScreen(),
+          ),
+          GoRoute(
+            path: '/student/payments',
+            builder: (context, state) => const StudentPaymentsScreen(),
+          ),
+          GoRoute(
+            path: '/student/attendance',
+            builder: (context, state) => const StudentAttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/student/community/:groupId',
+            builder: (context, state) {
+              final groupId = state.pathParameters['groupId']!;
+              final name = state.uri.queryParameters['name'] ?? 'গ্রুপ';
+              return CommunityChatScreen(groupId: groupId, groupName: name);
+            },
+          ),
+          GoRoute(
+            path: '/student/community',
+            builder: (context, state) => const CommunityScreen(),
+          ),
+          GoRoute(
+            path: '/student/qbank',
+            builder: (context, state) => const QBankScreen(),
+          ),
+          GoRoute(
+            path: '/student/qbank/practice/:chapterId',
+            builder: (context, state) {
+              final chapterId = state.pathParameters['chapterId']!;
+              final chapter = state.uri.queryParameters['chapter'];
+              return QBankPracticeScreen(
+                chapterId: chapterId,
+                chapterName: chapter,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/student/profile/edit',
+            builder: (context, state) => const StudentEditProfileScreen(),
+          ),
+          GoRoute(
+            path: '/student/settings',
+            builder: (context, state) => const StudentSettingsScreen(),
+          ),
+          GoRoute(
+            path: '/student/menu',
+            builder: (context, state) => const StudentMenuScreen(),
+          ),
+        ],
+      ),
+    ],
   ],
 );
 
 String? _redirect(BuildContext context, GoRouterState state) {
   var path = state.uri.path;
-  final querySuffix =
-      state.uri.hasQuery ? '?${state.uri.query}' : '';
+  final querySuffix = state.uri.hasQuery ? '?${state.uri.query}' : '';
 
   // Trailing slash: `/admin/doubts/` → `/admin/doubts` (otherwise no match).
   if (path.length > 1 && path.endsWith('/')) {
@@ -495,6 +530,41 @@ String? _redirect(BuildContext context, GoRouterState state) {
   final onAdmin = path.startsWith('/admin');
   final onStudent = path.startsWith('/student');
   final onTeacher = path.startsWith('/teacher');
+  final onPublicPayment = path == kPublicPaymentPath;
+  final onPublicVoucher = path == kPublicVoucherPath;
+  String voucherQuery = state.uri.queryParameters['v']?.trim() ?? '';
+  if (voucherQuery.isEmpty) {
+    voucherQuery = Uri.base.queryParameters['v']?.trim() ?? '';
+  }
+  if (voucherQuery.isEmpty) {
+    final frag = Uri.base.fragment;
+    final i = frag.indexOf('?');
+    if (i >= 0 && i + 1 < frag.length) {
+      final fragQuery = Uri.splitQueryString(frag.substring(i + 1));
+      voucherQuery = fragQuery['v']?.trim() ?? '';
+    }
+  }
+
+  // Some scanners/browsers append hash fragments like `#/home`.
+  // If voucher query is present, always keep the public voucher route.
+  if (voucherQuery.isNotEmpty && path != kPublicVoucherPath) {
+    return Uri(
+      path: kPublicVoucherPath,
+      queryParameters: <String, String>{'v': voucherQuery},
+    ).toString();
+  }
+
+  if (isWebAdminOnlyMode) {
+    if (onTeacher || onStudent) return '/login';
+    if (path != '/' &&
+        !onAdmin &&
+        !onLogin &&
+        !onPublicPayment &&
+        !onPublicVoucher &&
+        !_webAdminPublicAllowedPaths.contains(path)) {
+      return '/home';
+    }
+  }
 
   if (onLogin) {
     if (session == null) return null;

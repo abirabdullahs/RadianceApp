@@ -243,9 +243,25 @@ class PaymentService {
     var totalNetDue = 0.0;
     var totalPaid = 0.0;
     var totalAdvanceAdded = 0.0;
+    String sharedVoucherNo = '';
+    for (final r in requests) {
+      final candidate = r.voucherNo?.trim() ?? '';
+      if (candidate.isNotEmpty) {
+        sharedVoucherNo = candidate;
+        break;
+      }
+    }
     for (final req in requests) {
-      final effectiveReq = req;
+      final effectiveReq = sharedVoucherNo.isEmpty
+          ? req
+          : req.copyWith(voucherNo: sharedVoucherNo);
       final res = await recordPayment(effectiveReq);
+      if (sharedVoucherNo.isEmpty) {
+        final generated = res.ledger.voucherNo.trim();
+        if (generated.isNotEmpty) {
+          sharedVoucherNo = generated;
+        }
+      }
       items.add(res);
       totalNetDue += res.netDue;
       totalPaid += effectiveReq.amountPaid;
