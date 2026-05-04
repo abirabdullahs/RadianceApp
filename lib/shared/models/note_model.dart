@@ -17,6 +17,7 @@ class NoteModel {
     this.isPublished,
     this.displayOrder,
     this.viewCount,
+    this.publicShareToken,
     this.createdBy,
     this.createdAt,
     this.updatedAt,
@@ -39,6 +40,8 @@ class NoteModel {
   final bool? isPublished;
   final int? displayOrder;
   final int? viewCount;
+  /// Opaque token for `/public/class-note` viewer (set by DB if missing).
+  final String? publicShareToken;
   final String? createdBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -61,6 +64,7 @@ class NoteModel {
       isPublished: json['is_published'] as bool?,
       displayOrder: (json['display_order'] as num?)?.toInt(),
       viewCount: (json['view_count'] as num?)?.toInt(),
+      publicShareToken: json['public_share_token'] as String?,
       createdBy: json['created_by'] as String?,
       createdAt: _parseDateTime(json['created_at']),
       updatedAt: _parseDateTime(json['updated_at']),
@@ -85,6 +89,7 @@ class NoteModel {
       'is_published': isPublished,
       'display_order': displayOrder,
       'view_count': viewCount,
+      'public_share_token': publicShareToken,
       'created_by': createdBy,
       'created_at': createdAt?.toUtc().toIso8601String(),
       'updated_at': updatedAt?.toUtc().toIso8601String(),
@@ -108,6 +113,7 @@ class NoteModel {
     bool? isPublished,
     int? displayOrder,
     int? viewCount,
+    String? publicShareToken,
     String? createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -129,6 +135,7 @@ class NoteModel {
       isPublished: isPublished ?? this.isPublished,
       displayOrder: displayOrder ?? this.displayOrder,
       viewCount: viewCount ?? this.viewCount,
+      publicShareToken: publicShareToken ?? this.publicShareToken,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

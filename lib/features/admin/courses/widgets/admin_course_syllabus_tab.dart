@@ -2,10 +2,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/public_links.dart';
 import '../../../../shared/models/chapter_model.dart';
 import '../../../../shared/models/chapter_suggestion_model.dart';
 import '../../../../shared/models/note_model.dart';
@@ -470,6 +472,35 @@ class _AdminCourseSyllabusTabState extends State<AdminCourseSyllabusTab> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                IconButton(
+                  tooltip: 'পাবলিক লিংক কপি',
+                  icon: const Icon(Icons.public_outlined, size: 20),
+                  onPressed: () async {
+                    final t = n.publicShareToken?.trim();
+                    if (t == null || t.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'শেয়ার টোকেন তৈরি হয়নি — একবার রিফ্রেশ করুন',
+                            style: GoogleFonts.hindSiliguri(),
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    final url = publicClassNoteUrl(t);
+                    await Clipboard.setData(ClipboardData(text: url));
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'পাবলিক লিংক কপি হয়েছে',
+                          style: GoogleFonts.hindSiliguri(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 IconButton(
                   icon: const Icon(Icons.open_in_new, size: 20),
                   onPressed: () => _openUrl(n.externalUrl ?? n.youtubeUrl ?? n.fileUrl),

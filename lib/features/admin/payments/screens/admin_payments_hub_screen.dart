@@ -17,10 +17,9 @@ import '../../widgets/admin_responsive_scaffold.dart';
 import '../../../../shared/models/course_model.dart';
 import '../../../../shared/models/payment_ledger_model.dart';
 import '../../../../shared/models/payment_model.dart';
+import '../../../../shared/models/payment_report_models.dart';
 import '../../../../shared/models/user_model.dart';
 import '../../courses/providers/courses_provider.dart';
-import '../../courses/repositories/course_repository.dart';
-import '../../students/repositories/student_repository.dart';
 import '../providers/payment_providers.dart';
 
 /// কোর্স + বিলিং মাস ফিল্টার (`null` = সব)।
@@ -45,98 +44,28 @@ final filteredPaymentsProvider =
           .getPaymentLedger(courseId: f.courseId, month: f.month);
     });
 
-final filteredDuesEnrichedProvider = FutureProvider.autoDispose<List<_DueRow>>((
-  ref,
-) async {
-  final f = ref.watch(paymentHubFiltersProvider);
-  if (f.courseId == null || f.month == null) return const <_DueRow>[];
+/// Payment schedule rows still owing (pending / partial / overdue). Empty filters → all open dues.
+final filteredDuesReportProvider =
+    FutureProvider.autoDispose<List<DueReportRow>>((ref) async {
+      final f = ref.watch(paymentHubFiltersProvider);
+      return ref.read(paymentRepositoryProvider).getDueReport(
+            month: f.month,
+            courseId: f.courseId,
+            overdueOnly: false,
+          );
+    });
 
-  final month = DateTime(f.month!.year, f.month!.month, 1);
-  final paymentRepo = ref.read(paymentRepositoryProvider);
-  final studentRepo = StudentRepository();
-  final courseRepo = CourseRepository();
-
-  // Students enrolled in this course (only active + currently active profile).
-  final students = (await studentRepo.getStudents(
-    courseId: f.courseId,
-  )).where((s) => s.isActive).toList();
-  if (students.isEmpty) return const <_DueRow>[];
-
-  // Anyone who has at least one monthly-like ledger entry in selected month is "paid".
-  final paidMonthly = await paymentRepo.getPaymentLedger(
-    courseId: f.courseId,
-    month: month,
-    paymentTypeCode: 'monthly',
-  );
-  final paidMonthlyFee = await paymentRepo.getPaymentLedger(
-    courseId: f.courseId,
-    month: month,
-    paymentTypeCode: 'monthly_fee',
-  );
-  final paidTuition = await paymentRepo.getPaymentLedger(
-    courseId: f.courseId,
-    month: month,
-    paymentTypeCode: 'tuition',
-  );
-  final paidIds = <String>{
-    ...paidMonthly.map((e) => e.studentId),
-    ...paidMonthlyFee.map((e) => e.studentId),
-    ...paidTuition.map((e) => e.studentId),
-  };
-
-  String courseName = f.courseId!;
-  double courseMonthlyFee = 0;
-  try {
-    final c = await courseRepo.getCourseById(f.courseId!);
-    courseName = c.name;
-    courseMonthlyFee = c.monthlyFee;
-  } catch (_) {}
-
-  final notPaid = students.where((s) => !paidIds.contains(s.id)).toList();
-  notPaid.sort((a, b) => a.fullNameBn.compareTo(b.fullNameBn));
-
-  final sRepo = StudentRepository();
-  final rows = <_DueRow>[];
-  for (final s in notPaid) {
-    var name = s.fullNameBn;
-    var phone = '';
-    var sid = s.id;
-    try {
-      final u = await sRepo.getStudentById(s.id);
-      name = u.fullNameBn;
-      phone = u.phone;
-      sid = u.id;
-    } catch (_) {}
-    rows.add(
-      _DueRow(
-        studentId: sid,
-        studentName: name,
-        studentPhone: phone,
-        courseName: courseName,
-        monthlyAmount: courseMonthlyFee,
-        month: month,
-      ),
-    );
+/// Billing months for dropdowns (no calendar day picker).
+List<DateTime> billingMonthOptionsList() {
+  const startYear = 2020;
+  const endYear = 2038;
+  final out = <DateTime>[];
+  for (var y = startYear; y <= endYear; y++) {
+    for (var m = 1; m <= 12; m++) {
+      out.add(DateTime(y, m, 1));
+    }
   }
-  return rows;
-});
-
-class _DueRow {
-  const _DueRow({
-    required this.studentId,
-    required this.studentName,
-    required this.studentPhone,
-    required this.courseName,
-    required this.monthlyAmount,
-    required this.month,
-  });
-
-  final String studentId;
-  final String studentName;
-  final String studentPhone;
-  final String courseName;
-  final double monthlyAmount;
-  final DateTime month;
+  return out;
 }
 
 /// Tabs: recent payments | open dues.
@@ -188,15 +117,54 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
   }
 
   Future<void> _runGenerateDues() async {
-    final picked = await showDatePicker(
+    final months = billingMonthOptionsList();
+    var selected = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    final ok = await showDialog<bool>(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020, 1, 1),
-      lastDate: DateTime(2035, 12, 31),
-      helpText: 'যে মাসের Due generate করবেন',
+      builder: (ctx) => AlertDialog(
+        title: Text('যে মাসের Due generate করবেন', style: GoogleFonts.hindSiliguri()),
+        content: StatefulBuilder(
+          builder: (context, setLocal) => DropdownButtonFormField<DateTime>(
+            isExpanded: true,
+            value: selected,
+            decoration: InputDecoration(
+              labelText: 'মাস',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+              ),
+            ),
+            items: months
+                .map(
+                  (m) => DropdownMenuItem<DateTime>(
+                    value: m,
+                    child: Text(
+                      DateFormat.yMMMM().format(m),
+                      style: GoogleFonts.hindSiliguri(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (m) {
+              if (m != null) setLocal(() => selected = m);
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('বাতিল', style: GoogleFonts.hindSiliguri()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('OK', style: GoogleFonts.nunito()),
+          ),
+        ],
+      ),
     );
-    if (picked == null || !mounted) return;
-    final month = DateTime(picked.year, picked.month, 1);
+    if (ok != true || !mounted) return;
+    final month = DateTime(selected.year, selected.month, 1);
     try {
       final out = await ref
           .read(paymentDueEdgeServiceProvider)
@@ -204,7 +172,7 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
       if (out == null) {
         throw Exception('No response from due generation function');
       }
-      ref.invalidate(filteredDuesEnrichedProvider);
+      ref.invalidate(filteredDuesReportProvider);
       ref.invalidate(filteredPaymentsProvider);
       if (!mounted) return;
       final result = out['result'] is Map
@@ -315,34 +283,12 @@ class _AdminPaymentsScreenState extends ConsumerState<AdminPaymentsScreen>
 class _PaymentHubFilterBar extends ConsumerWidget {
   const _PaymentHubFilterBar();
 
-  Future<void> _pickMonth(BuildContext context, WidgetRef ref) async {
-    final f = ref.read(paymentHubFiltersProvider);
-    final initial =
-        f.month ?? DateTime(DateTime.now().year, DateTime.now().month, 1);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020, 1),
-      lastDate: DateTime(2035, 12),
-      helpText: 'বিলিং মাস',
-    );
-    if (picked == null) return;
-    ref.read(paymentHubFiltersProvider.notifier).state = PaymentHubFilters(
-      courseId: f.courseId,
-      month: DateTime(picked.year, picked.month, 1),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final f = ref.watch(paymentHubFiltersProvider);
     final coursesAsync = ref.watch(coursesProvider);
     final scheme = Theme.of(context).colorScheme;
-
-    String monthLabel() {
-      if (f.month == null) return 'সব মাস';
-      return DateFormat.yMMMM().format(f.month!);
-    }
+    final months = billingMonthOptionsList();
 
     return Material(
       elevation: 1,
@@ -422,16 +368,43 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                   );
                 }
 
-                Widget monthBtn() {
-                  return OutlinedButton.icon(
-                    onPressed: () => _pickMonth(context, ref),
-                    icon: const Icon(Icons.calendar_month, size: 18),
-                    label: Text(
-                      monthLabel(),
-                      style: GoogleFonts.hindSiliguri(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                Widget monthDropdown() {
+                  return DropdownButtonFormField<DateTime?>(
+                    isExpanded: true,
+                    value: f.month,
+                    decoration: InputDecoration(
+                      labelText: 'বিলিং মাস',
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppTheme.cardRadius,
+                        ),
+                      ),
                     ),
+                    items: [
+                      DropdownMenuItem<DateTime?>(
+                        value: null,
+                        child: Text(
+                          'সব মাস',
+                          style: GoogleFonts.hindSiliguri(),
+                        ),
+                      ),
+                      ...months.map(
+                        (m) => DropdownMenuItem<DateTime?>(
+                          value: m,
+                          child: Text(
+                            DateFormat.yMMMM().format(m),
+                            style: GoogleFonts.hindSiliguri(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (m) {
+                      ref.read(paymentHubFiltersProvider.notifier).state =
+                          PaymentHubFilters(courseId: f.courseId, month: m);
+                    },
                   );
                 }
 
@@ -444,7 +417,7 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                         children: [
                           courseDropdown(),
                           const SizedBox(height: 10),
-                          monthBtn(),
+                          monthDropdown(),
                         ],
                       );
                     }
@@ -453,7 +426,7 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                       children: [
                         Expanded(flex: 3, child: courseDropdown()),
                         const SizedBox(width: 8),
-                        Expanded(flex: 2, child: monthBtn()),
+                        Expanded(flex: 2, child: monthDropdown()),
                       ],
                     );
                   },
@@ -464,32 +437,18 @@ class _PaymentHubFilterBar extends ConsumerWidget {
                   Text('$e', style: GoogleFonts.hindSiliguri(fontSize: 12)),
             ),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                if (f.month != null)
-                  ActionChip(
-                    label: Text(
-                      'মাস সরান',
-                      style: GoogleFonts.hindSiliguri(fontSize: 12),
-                    ),
-                    onPressed: () {
-                      ref.read(paymentHubFiltersProvider.notifier).state =
-                          PaymentHubFilters(courseId: f.courseId, month: null);
-                    },
-                  ),
-                TextButton(
-                  onPressed: () {
-                    ref.read(paymentHubFiltersProvider.notifier).state =
-                        const PaymentHubFilters();
-                  },
-                  child: Text(
-                    'ফিল্টার রিসেট',
-                    style: GoogleFonts.hindSiliguri(),
-                  ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  ref.read(paymentHubFiltersProvider.notifier).state =
+                      const PaymentHubFilters();
+                },
+                child: Text(
+                  'ফিল্টার রিসেট',
+                  style: GoogleFonts.hindSiliguri(),
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -1056,90 +1015,285 @@ class _PaymentsTabState extends ConsumerState<_PaymentsTab> {
   }
 }
 
-class _DuesTab extends ConsumerWidget {
+class _DuesTab extends ConsumerStatefulWidget {
   const _DuesTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(filteredDuesEnrichedProvider);
-    final filters = ref.watch(paymentHubFiltersProvider);
+  ConsumerState<_DuesTab> createState() => _DuesTabState();
+}
+
+class _DuesTabState extends ConsumerState<_DuesTab> {
+  final Map<String, String> _displayStudentIds = <String, String>{};
+  String _displayIdsKey = '';
+
+  Future<void> _loadDisplayStudentIds(List<DueReportRow> list) async {
+    final ids = list.map((e) => e.studentId).toSet().toList()..sort();
+    final key = ids.join(',');
+    if (key == _displayIdsKey) return;
+    _displayIdsKey = key;
+    if (ids.isEmpty) {
+      if (mounted) setState(() => _displayStudentIds.clear());
+      return;
+    }
+    try {
+      final map = await ref
+          .read(studentRepositoryForPaymentsProvider)
+          .getDisplayStudentIdsForUserIds(ids);
+      if (!mounted) return;
+      setState(() {
+        _displayStudentIds
+          ..clear()
+          ..addAll(map);
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(filteredDuesReportProvider);
     final fmt = NumberFormat.currency(symbol: '৳', decimalDigits: 0);
+    final dateFmt = DateFormat.yMMMd();
     return async.when(
       data: (rows) {
-        if (filters.courseId == null || filters.month == null) {
+        unawaited(_loadDisplayStudentIds(rows));
+        final totalRemain = rows.fold<double>(
+          0,
+          (a, r) => a + r.remainingAmount,
+        );
+        if (rows.isEmpty) {
           return Center(
             child: Text(
-              'বকেয়া দেখার জন্য কোর্স এবং মাস নির্বাচন করুন',
+              'কোনো খোলা বকেয়া নেই',
               style: GoogleFonts.hindSiliguri(),
               textAlign: TextAlign.center,
             ),
           );
         }
-        if (rows.isEmpty) {
-          return Center(
-            child: Text(
-              'এই কোর্স/মাসে সবাই Monthly payment করেছে',
-              style: GoogleFonts.hindSiliguri(),
-            ),
-          );
-        }
         return RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(filteredDuesEnrichedProvider);
-            await ref.read(filteredDuesEnrichedProvider.future);
+            ref.invalidate(filteredDuesReportProvider);
+            await ref.read(filteredDuesReportProvider.future);
           },
           child: ListView(
+            padding: const EdgeInsets.only(bottom: 24),
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Monthly না দেয়া শিক্ষার্থী: ${rows.length} জন',
-                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: Text(
+                  'সারি: ${rows.length} · মোট বাকি ${fmt.format(totalRemain)}',
+                  style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
                 ),
               ),
-              ...List.generate(rows.length, (i) {
-                final r = rows[i];
-                return ListTile(
-                  leading: CircleAvatar(
-                    radius: 14,
-                    child: Text(
-                      '${i + 1}',
-                      style: GoogleFonts.nunito(fontWeight: FontWeight.w700),
+              LayoutBuilder(
+                builder: (context, c) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: c.maxWidth),
+                      child: DataTable(
+                        headingRowHeight: 44,
+                        dataRowMinHeight: 48,
+                        dataRowMaxHeight: 72,
+                        columnSpacing: 12,
+                        columns: [
+                          DataColumn(
+                            label: Text(
+                              '#',
+                              style: GoogleFonts.nunito(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'শিক্ষার্থী',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'আইডি',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'কোর্স',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'ধরন',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'বিলিং মাস',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'স্ট্যাটাস',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Due',
+                              style: GoogleFonts.nunito(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'বিলম্ব',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'মোট',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'পরিশোধ',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'বাকি',
+                              style: GoogleFonts.hindSiliguri(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              '',
+                              style: GoogleFonts.nunito(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                        rows: List.generate(rows.length, (i) {
+                          final r = rows[i];
+                          final sid =
+                              _displayStudentIds[r.studentId] ?? r.studentId;
+                          final billMonth = r.forMonth == null
+                              ? '—'
+                              : DateFormat.yMMMM().format(r.forMonth!);
+                          return DataRow(
+                            cells: [
+                              DataCell(Text('${i + 1}', style: GoogleFonts.nunito())),
+                              DataCell(
+                                Text(
+                                  r.studentName,
+                                  style: GoogleFonts.hindSiliguri(),
+                                ),
+                              ),
+                              DataCell(
+                                SelectableText(sid, style: GoogleFonts.nunito(fontSize: 12)),
+                              ),
+                              DataCell(
+                                Text(
+                                  r.courseName,
+                                  style: GoogleFonts.hindSiliguri(),
+                                  maxLines: 2,
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  r.paymentTypeCode,
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
+                              ),
+                              DataCell(Text(billMonth, style: GoogleFonts.nunito(fontSize: 12))),
+                              DataCell(Text(r.status, style: GoogleFonts.nunito(fontSize: 12))),
+                              DataCell(
+                                Text(
+                                  dateFmt.format(r.dueDate),
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  '${r.overdueDays}',
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  fmt.format(r.amount),
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  fmt.format(r.paidAmount),
+                                  style: GoogleFonts.nunito(fontSize: 12),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  fmt.format(r.remainingAmount),
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                OutlinedButton(
+                                  onPressed: () => context.push(
+                                    '/admin/payments/add',
+                                    extra: r.studentId,
+                                  ),
+                                  child: Text(
+                                    'পেমেন্ট',
+                                    style: GoogleFonts.hindSiliguri(fontSize: 11),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                      ),
                     ),
-                  ),
-                  title: Text(r.studentName, style: GoogleFonts.hindSiliguri()),
-                  subtitle: Text(
-                    '${r.courseName} · ${DateFormat.yMMMM().format(r.month)}',
-                    style: GoogleFonts.nunito(fontSize: 12),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        fmt.format(r.monthlyAmount),
-                        style: GoogleFonts.nunito(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 4),
-                      OutlinedButton(
-                        onPressed: () => context.push(
-                          '/admin/payments/add',
-                          extra: r.studentId,
-                        ),
-                        child: Text(
-                          'Clear Payment',
-                          style: GoogleFonts.nunito(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                  );
+                },
+              ),
             ],
           ),
         );

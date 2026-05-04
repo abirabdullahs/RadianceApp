@@ -35,6 +35,7 @@ import '../features/auth/screens/splash_screen.dart';
 import '../features/home/screens/public_home_screen.dart';
 import '../features/home/screens/public_payment_screen.dart';
 import '../features/home/screens/public_voucher_verify_screen.dart';
+import '../features/home/screens/public_class_note_screen.dart';
 import '../features/admin/cms/admin_home_cms_screen.dart';
 import '../features/admin/community/screens/admin_course_chats_screen.dart';
 import '../features/question_bank/admin/screens/admin_qbank_chapter_questions_screen.dart';
@@ -87,6 +88,7 @@ const _webAdminPublicAllowedPaths = <String>{
   '/login',
   kPublicPaymentPath,
   kPublicVoucherPath,
+  kPublicClassNotePath,
 };
 
 /// App navigation: splash, public home, auth, role-based admin vs student stacks.
@@ -129,6 +131,12 @@ final GoRouter appRouter = GoRouter(
       path: kPublicVoucherPath,
       builder: (context, state) => PublicVoucherVerifyScreen(
         initialVoucher: state.uri.queryParameters['v'],
+      ),
+    ),
+    GoRoute(
+      path: kPublicClassNotePath,
+      builder: (context, state) => PublicClassNoteScreen(
+        initialToken: state.uri.queryParameters['t'],
       ),
     ),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
@@ -532,6 +540,7 @@ String? _redirect(BuildContext context, GoRouterState state) {
   final onTeacher = path.startsWith('/teacher');
   final onPublicPayment = path == kPublicPaymentPath;
   final onPublicVoucher = path == kPublicVoucherPath;
+  final onPublicClassNote = path == kPublicClassNotePath;
   String voucherQuery = state.uri.queryParameters['v']?.trim() ?? '';
   if (voucherQuery.isEmpty) {
     voucherQuery = Uri.base.queryParameters['v']?.trim() ?? '';
@@ -561,6 +570,7 @@ String? _redirect(BuildContext context, GoRouterState state) {
         !onLogin &&
         !onPublicPayment &&
         !onPublicVoucher &&
+        !onPublicClassNote &&
         !_webAdminPublicAllowedPaths.contains(path)) {
       return '/home';
     }
